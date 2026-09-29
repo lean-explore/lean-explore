@@ -1,547 +1,187 @@
-"""Tests for informalization module.
+"""End-to-end tests for informalize_declarations.
 
-These tests verify the LLM-based generation of informal descriptions for Lean
-declarations, including dependency layering, caching, and database operations.
+Each test runs the real pipeline against SQLite database files with a fake LLM
+client, and checks what ends up stored in the database.
 """
 
-import asyncio
-from unittest.mock import MagicMock, patch
-
 import pytest
-from rich.progress import Progress
-from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
 
-from lean_explore.extract.informalize import (
-    DeclarationData,
-    InformalizationResult,
-    _build_dependency_layers,
-    _discover_database_files,
-    _get_declarations_to_process,
-    _load_cache_from_databases,
-    _load_existing_informalizations,
-    _parse_dependencies,
-    _process_layer,
-    _process_one_declaration,
-    informalize_declarations,
+from lean_explore.extract import informalize
+from lean_explore.extract.informalize import informalize_declarations
+from tests.extract.builders import (
+    FakeLLMClient,
+    create_database,
+    describe,
+    load_by_name,
+    make_declaration,
+    write_database,
 )
-from lean_explore.models import Declaration
 
 
-class TestDependencyParsing:
-    """Tests for dependency parsing utilities."""
-
-    def test_parse_dependencies_json_string(self):
-        """Test parsing dependencies from JSON string."""
-        dependencies = '["Nat", "List", "Array"]'
-
-        result = _parse_dependencies(dependencies)
-
-        assert result == ["Nat", "List", "Array"]
-
-    def test_parse_dependencies_list(self):
-        """Test parsing dependencies from list."""
-        dependencies = ["Nat", "List"]
-
-        result = _parse_dependencies(dependencies)
-
-        assert result == ["Nat", "List"]
-
-    def test_parse_dependencies_none(self):
-        """Test parsing None dependencies."""
-        result = _parse_dependencies(None)
-
-        assert result == []
-
-    def test_parse_dependencies_empty_string(self):
-        """Test parsing empty string."""
-        result = _parse_dependencies("")
-
-        assert result == []
+@pytest.fixture
+def llm(monkeypatch) -> FakeLLMClient:
+    """Install a fake LLM client in place of OpenRouterClient."""
+    client = FakeLLMClient()
+    monkeypatch.setattr(informalize, "OpenRouterClient", lambda: client)
+    return client
 
 
-class TestDependencyLayering:
-    """Tests for dependency layer building."""
+@pytest.fixture
+def no_llm(monkeypatch):
+    """Fail the test if an LLM client is created."""
 
-    def test_build_dependency_layers_simple(self, sample_declarations):
-        """Test building layers from simple dependency graph."""
-        layers = _build_dependency_layers(sample_declarations)
+    def fail():
+        raise AssertionError("OpenRouterClient should not be created")
 
-        # Should have at least 2 layers
-        # Layer 0: Nat (no dependencies)
-        # Layer 1: Nat.succ (depends on Nat)
-        # Layer 2: Nat.add (depends on Nat and Nat.succ)
-        assert len(layers) >= 2
+    monkeypatch.setattr(informalize, "OpenRouterClient", fail)
 
-        # First layer should contain Nat
-        assert any(d.name == "Nat" for d in layers[0])
 
-        # Nat.succ should be in later layer
-        nat_succ_layer = next(
-            i
-            for i, layer in enumerate(layers)
-            if any(d.name == "Nat.succ" for d in layer)
-        )
-        assert nat_succ_layer > 0
+async def _informalize(tmp_path, declarations, **kwargs) -> dict:
+    """Run informalize_declarations on a fresh database; return stored rows."""
+    engine = await create_database(tmp_path / "run" / "lean_explore.db", declarations)
+    kwargs.setdefault("model", "test-model")
+    await informalize_declarations(engine, **kwargs)
+    stored = await load_by_name(engine)
+    await engine.dispose()
+    return stored
 
-    def test_build_dependency_layers_no_dependencies(self):
-        """Test layering with declarations that have no dependencies."""
+
+def _chain() -> list:
+    return [
+        make_declaration("Top", dependencies=["Mid", "Base"]),
+        make_declaration("Mid", dependencies=["Base"]),
+        make_declaration("Base"),
+    ]
+
+
+class TestInformalizeDeclarations:
+    """Tests for the informalization pipeline."""
+
+    async def test_informalizes_in_dependency_order(self, tmp_path, previous_runs, llm):
+        """Dependencies are described first and passed as prompt context."""
+        stored = await _informalize(tmp_path, _chain())
+
+        assert llm.order == ["Base", "Mid", "Top"]
+        assert f"- Mid: {describe('Mid')}" in llm.prompts["Top"]
+        assert f"- Base: {describe('Base')}" in llm.prompts["Top"]
+        assert "**Declaration Name:** Top" in llm.prompts["Top"]
+        assert {n: d.informalization for n, d in stored.items()} == {
+            n: describe(n) for n in ["Top", "Mid", "Base"]
+        }
+
+    async def test_existing_informalizations_are_kept_and_used(
+        self, tmp_path, previous_runs, llm
+    ):
+        """Already described declarations are not resent but give context."""
         declarations = [
-            Declaration(
-                name="A",
-                module="Test",
-                source_text="def a := 1",
-                source_link="https://example.com",
-                dependencies=None,
-            ),
-            Declaration(
-                name="B",
-                module="Test",
-                source_text="def b := 2",
-                source_link="https://example.com",
-                dependencies=None,
-            ),
+            make_declaration("Base", informalization="Existing base."),
+            make_declaration("Mid", dependencies=["Base"]),
         ]
 
-        layers = _build_dependency_layers(declarations)
+        stored = await _informalize(tmp_path, declarations)
 
-        # All should be in first layer
-        assert len(layers) == 1
-        assert len(layers[0]) == 2
+        assert llm.order == ["Mid"]
+        assert "- Base: Existing base." in llm.prompts["Mid"]
+        assert stored["Base"].informalization == "Existing base."
 
-    def test_build_dependency_layers_with_cycles(self):
-        """Test layering with cyclic dependencies."""
-        declarations = [
-            Declaration(
-                name="A",
-                module="Test",
-                source_text="def a := b",
-                source_link="https://example.com",
-                dependencies='["B"]',
-            ),
-            Declaration(
-                name="B",
-                module="Test",
-                source_text="def b := c",
-                source_link="https://example.com",
-                dependencies='["C"]',
-            ),
-            Declaration(
-                name="C",
-                module="Test",
-                source_text="def c := a",
-                source_link="https://example.com",
-                dependencies='["A"]',
-            ),
-        ]
-
-        layers = _build_dependency_layers(declarations)
-
-        # Should handle cycles by putting them in a final layer
-        assert len(layers) >= 1
-
-        # All declarations should be in some layer
-        all_names = {d.name for layer in layers for d in layer}
-        assert all_names == {"A", "B", "C"}
-
-    def test_build_dependency_layers_missing_dependencies(self):
-        """Test layering when dependencies reference non-existent declarations."""
-        declarations = [
-            Declaration(
-                name="A",
-                module="Test",
-                source_text="def a := missing + 1",
-                source_link="https://example.com",
-                dependencies='["NonExistent"]',
-            ),
-        ]
-
-        layers = _build_dependency_layers(declarations)
-
-        # Should treat as no dependencies (since dependency not in graph)
-        assert len(layers) == 1
-        assert layers[0][0].name == "A"
-
-
-class TestDatabaseOperations:
-    """Tests for database loading operations."""
-
-    async def test_load_existing_informalizations(
-        self, async_db_session, sample_declarations
+    async def test_reuses_matching_informalizations_from_previous_runs(
+        self, tmp_path, previous_runs, llm
     ):
-        """Test loading existing informalizations from database."""
-        for declaration in sample_declarations:
-            async_db_session.add(declaration)
-        await async_db_session.commit()
-
-        results = await _load_existing_informalizations(async_db_session)
-
-        # Should load the 3 declarations with informalizations
-        assert len(results) == 3
-        assert all(isinstance(r, InformalizationResult) for r in results)
-        assert all(r.informalization is not None for r in results)
-
-    async def test_get_declarations_to_process(self, async_db_session):
-        """Test getting declarations needing informalization."""
-        # Add declarations with and without informalizations
-        decl_with_informal = Declaration(
-            name="HasInformal",
-            module="Test",
-            source_text="def test := 1",
-            source_link="https://example.com",
-            informalization="This is informalized",
-        )
-        decl_without_informal = Declaration(
-            name="NeedsInformal",
-            module="Test",
-            source_text="def test2 := 2",
-            source_link="https://example.com",
-            informalization=None,
-        )
-        async_db_session.add(decl_with_informal)
-        async_db_session.add(decl_without_informal)
-        await async_db_session.commit()
-
-        declarations = await _get_declarations_to_process(async_db_session, limit=None)
-
-        # Should only return declaration without informalization
-        assert len(declarations) == 1
-        assert declarations[0].name == "NeedsInformal"
-
-    async def test_get_declarations_to_process_with_limit(self, async_db_session):
-        """Test getting declarations with a limit."""
-        for i in range(10):
-            decl = Declaration(
-                name=f"Declaration{i}",
-                module="Test",
-                source_text=f"def test{i} := {i}",
-                source_link=f"https://example.com/{i}",
-                informalization=None,
-            )
-            async_db_session.add(decl)
-        await async_db_session.commit()
-
-        declarations = await _get_declarations_to_process(async_db_session, limit=5)
-
-        assert len(declarations) == 5
-
-
-class TestCacheLoading:
-    """Tests for cross-database cache loading."""
-
-    def test_discover_database_files(self, temp_directory):
-        """Test discovering database files in data/cache directories."""
-        # Create mock database files
-        data_dir = temp_directory / "data"
-        cache_dir = temp_directory / "cache"
-
-        (data_dir / "v4.24.0").mkdir(parents=True)
-        (data_dir / "v4.24.0" / "lean_explore.db").touch()
-
-        (cache_dir / "v4.23.0").mkdir(parents=True)
-        (cache_dir / "v4.23.0" / "lean_explore.db").touch()
-
-        with patch("lean_explore.extract.informalize.Config") as mock_config:
-            mock_config.DATA_DIRECTORY = data_dir
-            mock_config.CACHE_DIRECTORY = cache_dir
-
-            database_files = _discover_database_files()
-
-        assert len(database_files) == 2
-
-    @pytest.mark.slow
-    async def test_load_cache_from_databases(self, async_db_engine, temp_directory):
-        """Test loading cache from multiple databases."""
-        # Create a database file with informalizations
-        db_path = temp_directory / "test.db"
-        db_url = f"sqlite+aiosqlite:///{db_path}"
-
-        from sqlalchemy.ext.asyncio import create_async_engine
-
-        from lean_explore.models import Base
-
-        engine = create_async_engine(db_url)
-        async with engine.begin() as conn:
-            await conn.run_sync(Base.metadata.create_all)
-
-        async with AsyncSession(engine) as session:
-            declaration = Declaration(
-                name="Test",
-                module="Test",
-                source_text="def test := 42",
-                source_link="https://example.com",
-                informalization="Returns the number 42",
-            )
-            session.add(declaration)
-            await session.commit()
-
-        await engine.dispose()
-
-        cache = await _load_cache_from_databases([db_path])
-
-        assert "def test := 42" in cache
-        assert cache["def test := 42"] == "Returns the number 42"
-
-
-class TestProcessingFunctions:
-    """Tests for declaration processing functions."""
-
-    async def test_process_one_declaration_new(self, mock_openai_client):
-        """Test processing a declaration without existing informalization."""
-        # Create declaration data without informalization
-        declaration_data = DeclarationData(
-            id=1,
-            name="Test",
-            source_text="def test := 1",
-            docstring=None,
-            dependencies=None,
-            informalization=None,  # No existing informalization
-        )
-
-        semaphore = asyncio.Semaphore(5)
-        prompt_template = (
-            "Name: {name}\nSource: {source_text}\nDoc: {docstring}\n{dependencies}"
-        )
-
-        result = await _process_one_declaration(
-            declaration_data=declaration_data,
-            client=mock_openai_client,
-            model="test-model",
-            prompt_template=prompt_template,
-            informalizations_by_name={},
-            cache={},
-            semaphore=semaphore,
-        )
-
-        assert result.informalization == "This is a mock informalization"
-        mock_openai_client.generate.assert_called_once()
-
-    async def test_process_one_declaration_cached(self, mock_openai_client):
-        """Test processing with cached informalization."""
-        # Create declaration data without informalization
-        declaration_data = DeclarationData(
-            id=1,
-            name="Test",
-            source_text="def test := 1",
-            docstring=None,
-            dependencies=None,
-            informalization=None,
-        )
-
-        semaphore = asyncio.Semaphore(5)
-        prompt_template = "Name: {name}"
-        # Cache key is now (name, source_text) tuple
-        cache_key = (declaration_data.name, declaration_data.source_text)
-        cache = {cache_key: "Cached informalization"}
-
-        # Use mock client - shouldn't be called due to cache
-        result = await _process_one_declaration(
-            declaration_data=declaration_data,
-            client=mock_openai_client,
-            model="test-model",
-            prompt_template=prompt_template,
-            informalizations_by_name={},
-            cache=cache,
-            semaphore=semaphore,
-        )
-
-        assert result.informalization == "Cached informalization"
-        # Verify client was not called (cache hit)
-        mock_openai_client.generate.assert_not_called()
-
-    async def test_process_one_declaration_already_informalized(
-        self, mock_openai_client
-    ):
-        """Test processing declaration that already has informalization."""
-        # Create declaration data with existing informalization
-        declaration_data = DeclarationData(
-            id=1,
-            name="Test",
-            source_text="def test := 1",
-            docstring=None,
-            dependencies=None,
-            informalization="Already done",
-        )
-
-        semaphore = asyncio.Semaphore(5)
-
-        result = await _process_one_declaration(
-            declaration_data=declaration_data,
-            client=mock_openai_client,
-            model="test-model",
-            prompt_template="",
-            informalizations_by_name={},
-            cache={},
-            semaphore=semaphore,
-        )
-
-        assert result.informalization is None
-        # Verify client was not called (already informalized)
-        mock_openai_client.generate.assert_not_called()
-
-    @pytest.mark.slow
-    async def test_process_layer(
-        self, async_db_session, sample_declarations, mock_openai_client
-    ):
-        """Test processing a layer of declarations."""
-        for declaration in sample_declarations:
-            declaration.informalization = None
-            async_db_session.add(declaration)
-        await async_db_session.commit()
-
-        semaphore = asyncio.Semaphore(5)
-        prompt_template = "Name: {name}"
-
-        with Progress() as progress:
-            total_task = progress.add_task("Total", total=len(sample_declarations))
-            batch_task = progress.add_task("Batch", total=1000)
-
-            processed = await _process_layer(
-                session=async_db_session,
-                layer=sample_declarations,
-                client=mock_openai_client,
-                model="test-model",
-                prompt_template=prompt_template,
-                informalizations_by_name={},
-                cache_by_source_text={},
-                semaphore=semaphore,
-                progress=progress,
-                total_task=total_task,
-                batch_task=batch_task,
-                commit_batch_size=10,
-            )
-
-        assert processed == len(sample_declarations)
-
-        # Verify database was updated
-        result = await async_db_session.execute(select(Declaration))
-        declarations = result.scalars().all()
-        for declaration in declarations:
-            assert declaration.informalization is not None
-
-
-class TestInformalizeE2E:
-    """End-to-end informalization tests."""
-
-    @pytest.mark.integration
-    @pytest.mark.slow
-    async def test_informalize_declarations_full_pipeline(
-        self, async_db_engine, mock_openai_client
-    ):
-        """Test complete informalization pipeline."""
-        # Add declarations to database
-        async with AsyncSession(async_db_engine) as session:
-            declarations = [
-                Declaration(
-                    name="Base",
-                    module="Test",
-                    source_text="def base := 1",
-                    source_link="https://example.com/base",
-                    dependencies=None,
+        """Previous results are reused only when name and source text match."""
+        data_directory, cache_directory = previous_runs
+        write_database(
+            data_directory / "v1" / "lean_explore.db",
+            [
+                make_declaration("Base", informalization="Cached base."),
+                make_declaration(
+                    "Mid", source_text="def Mid := old", informalization="Stale."
                 ),
-                Declaration(
-                    name="Derived",
-                    module="Test",
-                    source_text="def derived := base + 1",
-                    source_link="https://example.com/derived",
-                    dependencies='["Base"]',
-                ),
-            ]
-            for declaration in declarations:
-                session.add(declaration)
-            await session.commit()
+            ],
+        )
+        write_database(
+            cache_directory / "v0" / "lean_explore.db",
+            [make_declaration("Base", informalization="Older cached base.")],
+        )
 
-        # Mock the OpenRouter client
-        with patch(
-            "lean_explore.extract.informalize.OpenRouterClient"
-        ) as mock_client_cls:
-            mock_client_cls.return_value = mock_openai_client
+        stored = await _informalize(tmp_path, _chain())
 
-            # Mock prompt file
-            with patch("lean_explore.extract.informalize.Path") as mock_path_cls:
-                mock_prompt_file = MagicMock()
-                prompt = (
-                    "Name: {name}\nSource: {source_text}\n"
-                    "Doc: {docstring}\n{dependencies}"
-                )
-                mock_prompt_file.read_text.return_value = prompt
-                mock_path_cls.return_value.__truediv__.return_value = mock_prompt_file
+        assert llm.order == ["Mid", "Top"]
+        assert stored["Base"].informalization == "Cached base."
+        assert "- Base: Cached base." in llm.prompts["Mid"]
+        assert stored["Mid"].informalization == describe("Mid")
 
-                # Mock database discovery
-                with patch(
-                    "lean_explore.extract.informalize._discover_database_files"
-                ) as mock_discover:
-                    mock_discover.return_value = []
-
-                    await informalize_declarations(
-                        async_db_engine,
-                        model="test-model",
-                        commit_batch_size=100,
-                        max_concurrent=5,
-                        limit=None,
-                    )
-
-        # Verify all declarations were informalized
-        async with AsyncSession(async_db_engine) as session:
-            result = await session.execute(select(Declaration))
-            all_declarations = result.scalars().all()
-
-            assert len(all_declarations) == 2
-            for declaration in all_declarations:
-                assert declaration.informalization is not None
-
-    @pytest.mark.integration
-    @pytest.mark.skip(reason="Path mocking doesn't work reliably")
-    async def test_informalize_with_dependency_context(
-        self, async_db_engine, mock_openai_client
+    async def test_unreadable_previous_database_is_skipped(
+        self, tmp_path, previous_runs, llm
     ):
-        """Test that dependency context is included in prompts."""
-        async with AsyncSession(async_db_engine) as session:
-            # Create base declaration with informalization
-            base = Declaration(
-                name="Nat",
-                module="Init",
-                source_text="inductive Nat | zero | succ",
-                source_link="https://example.com",
-                informalization="Natural numbers",
-            )
-            # Create dependent declaration without informalization
-            derived = Declaration(
-                name="Nat.add",
-                module="Init",
-                source_text="def add (n m : Nat) := n + m",
-                source_link="https://example.com",
-                dependencies='["Nat"]',
-            )
-            session.add(base)
-            session.add(derived)
-            await session.commit()
+        """A corrupt cache database does not stop the run."""
+        data_directory, _ = previous_runs
+        (data_directory / "lean_explore.db").write_text("not a database")
 
-        with patch(
-            "lean_explore.extract.informalize.OpenRouterClient"
-        ) as mock_client_cls:
-            mock_client_cls.return_value = mock_openai_client
+        stored = await _informalize(tmp_path, [make_declaration("Base")])
 
-            with patch("lean_explore.extract.informalize.Path") as mock_path_cls:
-                mock_prompt_file = MagicMock()
-                mock_prompt_file.read_text.return_value = "Name: {name}\n{dependencies}"
-                mock_path_cls.return_value.__truediv__.return_value = mock_prompt_file
+        assert stored["Base"].informalization == describe("Base")
 
-                with patch(
-                    "lean_explore.extract.informalize._discover_database_files"
-                ) as mock_discover:
-                    mock_discover.return_value = []
+    async def test_all_cached_makes_no_llm_calls(self, tmp_path, previous_runs, no_llm):
+        """When every declaration is cached no LLM client is created."""
+        data_directory, _ = previous_runs
+        write_database(
+            data_directory / "lean_explore.db",
+            [make_declaration("Base", informalization="Cached base.")],
+        )
 
-                    await informalize_declarations(
-                        async_db_engine,
-                        model="test-model",
-                        limit=1,  # Only process Nat.add
-                    )
+        stored = await _informalize(
+            tmp_path, [make_declaration("Base")], commit_batch_size=1
+        )
 
-        # Verify the LLM was called with dependency context
-        # The prompt should include "Nat: Natural numbers" in dependencies section
-        call_args = mock_openai_client.generate.call_args
-        if call_args:
-            prompt = call_args[1]["messages"][0]["content"]
-            # Should contain dependency information
-            assert "Nat" in prompt or "Dependencies" in prompt
+        assert stored["Base"].informalization == "Cached base."
+
+    async def test_nothing_to_do(self, tmp_path, previous_runs, no_llm):
+        """A fully informalized database is left alone."""
+        stored = await _informalize(
+            tmp_path, [make_declaration("Base", informalization="Done.")]
+        )
+
+        assert stored["Base"].informalization == "Done."
+
+    async def test_limit_caps_declarations_processed(
+        self, tmp_path, previous_runs, llm
+    ):
+        """Only `limit` declarations are informalized."""
+        declarations = [make_declaration(f"D{i}") for i in range(5)]
+
+        stored = await _informalize(tmp_path, declarations, limit=2)
+
+        assert len(llm.order) == 2
+        assert sum(d.informalization is not None for d in stored.values()) == 2
+
+    async def test_small_commit_batches_store_everything(
+        self, tmp_path, previous_runs, llm
+    ):
+        """Results are stored whatever the commit batch size."""
+        stored = await _informalize(tmp_path, _chain(), commit_batch_size=1)
+
+        assert all(d.informalization == describe(n) for n, d in stored.items())
+
+    async def test_empty_llm_responses_are_left_unset(
+        self, tmp_path, previous_runs, llm
+    ):
+        """Declarations with an empty LLM answer stay without description."""
+        llm.empty_for = {"Mid"}
+
+        stored = await _informalize(tmp_path, _chain())
+
+        assert stored["Mid"].informalization is None
+        assert "- Mid:" not in llm.prompts["Top"]
+        assert stored["Top"].informalization == describe("Top")
+
+    async def test_llm_failure_aborts_run(self, tmp_path, previous_runs, monkeypatch):
+        """One failing LLM call aborts the run (known issue, kept as is)."""
+
+        class FailingClient:
+            async def generate(self, **kwargs):
+                raise RuntimeError("rate limited")
+
+        monkeypatch.setattr(informalize, "OpenRouterClient", FailingClient)
+
+        with pytest.raises(RuntimeError, match="rate limited"):
+            await _informalize(tmp_path, [make_declaration("Base")])
