@@ -34,29 +34,24 @@ dependencies = [
     "greenlet>=3.0.0",
     "numpy>=1.20",
     "faiss-cpu>=1.7",
-    "filelock>=3.0.0",
-    "nltk>=3.6",
     "bm25s>=0.2.0",
 
     # API Client / Shared Data Models
     "httpx>=0.23.0",
     "pydantic>=2.0",
 
-    # CLI & Agent Functionality
+    # CLI
     "typer[all]>=0.9.0",
-    "toml>=0.10.0",
-    "openai-agents>=0.0.16",
 
     # MCP Server Components
     # The current server uses the v1 FastMCP API. MCP 2.x is a breaking rewrite.
     "mcp>=1.28.0,<2",
 
     # Utilities
-    "tqdm>=4.60",
     "rich>=13.0.0",
     "requests>=2.25.0",
     "tenacity>=8.0.0",
-    "pooch>=1.8.0",
+    "openai>=1.0",
 ]
 
 [project.urls]
@@ -75,7 +70,6 @@ local = [
 extract = [
     "sentence-transformers>=2.2.0",
     "torch>=2.0.0",
-    "networkx>=3.0",
 ]
 
 dev = [
@@ -84,7 +78,7 @@ dev = [
     "pytest-asyncio>=0.21.0",
     "ruff>=0.1.0",
     "pre-commit>=3.0.0",
-    "networkx>=3.0",
+    "mypy>=1.10",
     "torch>=2.0.0",
     "sentence-transformers>=2.2.0",
 ]
