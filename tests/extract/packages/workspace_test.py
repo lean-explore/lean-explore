@@ -2,10 +2,10 @@
 
 import pytest
 
-from lean_explore.extract import package_utils
-from lean_explore.extract.package_config import PackageConfig, VersionStrategy
-from lean_explore.extract.package_registry import PACKAGE_REGISTRY
-from lean_explore.extract.package_utils import (
+from lean_explore.extract.packages import workspace
+from lean_explore.extract.packages.config import PackageConfig, VersionStrategy
+from lean_explore.extract.packages.registry import PACKAGE_REGISTRY
+from lean_explore.extract.packages.workspace import (
     get_extraction_order,
     get_package_toolchain,
     update_lakefile_docgen_version,
@@ -35,8 +35,8 @@ def toolchains(monkeypatch) -> dict:
             raise RuntimeError(f"no toolchain at {ref}")
         return by_ref[ref]
 
-    monkeypatch.setattr(package_utils, "fetch_lean_toolchain", fetch)
-    monkeypatch.setattr(package_utils, "fetch_latest_tag", lambda url: "v2.0.0")
+    monkeypatch.setattr(workspace, "fetch_lean_toolchain", fetch)
+    monkeypatch.setattr(workspace, "fetch_latest_tag", lambda url: "v2.0.0")
     by_ref["fetched"] = fetched
     return by_ref
 
@@ -90,7 +90,7 @@ class TestExtractionOrder:
             "b": PackageConfig("b", "u", ["B"], depends_on=["a"]),
             "a": PackageConfig("a", "u", ["A"]),
         }
-        monkeypatch.setattr(package_utils, "PACKAGE_REGISTRY", registry)
+        monkeypatch.setattr(workspace, "PACKAGE_REGISTRY", registry)
         assert get_extraction_order() == ["a", "b", "c"]
 
 

@@ -180,7 +180,7 @@ async def _run_doc_gen4_step(fresh: bool = False) -> None:
     Args:
         fresh: Clear cached dependencies to force fresh resolution.
     """
-    from lean_explore.extract.doc_gen4 import run_doc_gen4
+    from lean_explore.extract.docgen.build import run_doc_gen4
 
     logger.info("Running doc-gen4...")
     await run_doc_gen4(fresh=fresh)
@@ -193,7 +193,7 @@ async def _run_extract_step(engine: AsyncEngine) -> None:
     Args:
         engine: SQLAlchemy async engine instance.
     """
-    from lean_explore.extract.doc_parser import extract_declarations
+    from lean_explore.extract.docgen.parser import extract_declarations
 
     logger.info("Step 1: Extracting declarations from doc-gen4...")
     await extract_declarations(engine)
@@ -209,7 +209,7 @@ async def _run_informalize_step(
         engine: SQLAlchemy async engine instance.
         settings: Informalization settings.
     """
-    from lean_explore.extract.informalize import informalize_declarations
+    from lean_explore.extract.informalize.pipeline import informalize_declarations
 
     logger.info("Step 2: Generating informal descriptions...")
     await informalize_declarations(

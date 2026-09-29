@@ -13,7 +13,7 @@ from rich.progress import Progress, TaskID
 from sqlalchemy import update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from lean_explore.extract.dependency_layers import parse_dependencies
+from lean_explore.extract.informalize.dependency_layers import parse_dependencies
 from lean_explore.extract.progress import create_progress
 from lean_explore.models import Declaration
 from lean_explore.util import OpenRouterClient

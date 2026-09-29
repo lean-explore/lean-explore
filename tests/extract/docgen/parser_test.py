@@ -11,9 +11,12 @@ import pytest
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from lean_explore.extract.doc_parser import _detect_docgen_format, extract_declarations
+from lean_explore.extract.docgen.parser import (
+    _detect_docgen_format,
+    extract_declarations,
+)
 from lean_explore.models import Declaration as DBDeclaration
-from tests.extract.docgen_fixtures import (
+from tests.extract.docgen.fixtures import (
     MATHLIB_URL,
     DocgenRow,
     bmp_entry,

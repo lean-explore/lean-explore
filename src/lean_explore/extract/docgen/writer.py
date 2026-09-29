@@ -7,7 +7,7 @@ from sqlalchemy.dialects.postgresql import Insert, insert
 from sqlalchemy.engine import CursorResult
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from lean_explore.extract.docgen_common import new_progress
+from lean_explore.extract.docgen.common import new_progress
 from lean_explore.extract.types import Declaration
 from lean_explore.models import Declaration as DBDeclaration
 

@@ -7,7 +7,7 @@ import pytest
 from rich.progress import Progress
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from lean_explore.extract.informalize_generation import (
+from lean_explore.extract.informalize.generation import (
     DeclarationData,
     InformalizationRun,
     LayerProgress,

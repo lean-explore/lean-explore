@@ -8,9 +8,9 @@ import logging
 import re
 from pathlib import Path
 
-from lean_explore.extract.github import fetch_latest_tag, fetch_lean_toolchain
-from lean_explore.extract.package_config import PackageConfig, VersionStrategy
-from lean_explore.extract.package_registry import PACKAGE_REGISTRY
+from lean_explore.extract.packages.config import PackageConfig, VersionStrategy
+from lean_explore.extract.packages.github import fetch_latest_tag, fetch_lean_toolchain
+from lean_explore.extract.packages.registry import PACKAGE_REGISTRY
 
 logger = logging.getLogger(__name__)
 

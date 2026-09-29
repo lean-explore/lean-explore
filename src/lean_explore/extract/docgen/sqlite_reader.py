@@ -11,9 +11,12 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
-from lean_explore.extract.docgen_common import drop_self_references, new_progress
-from lean_explore.extract.lean_source import SourceTextReader, construct_source_link
-from lean_explore.extract.rendered_code import extract_names_from_rendered_code
+from lean_explore.extract.docgen.common import drop_self_references, new_progress
+from lean_explore.extract.docgen.lean_source import (
+    SourceTextReader,
+    construct_source_link,
+)
+from lean_explore.extract.docgen.rendered_code import extract_names_from_rendered_code
 from lean_explore.extract.types import Declaration
 
 logger = logging.getLogger(__name__)

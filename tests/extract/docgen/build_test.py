@@ -8,8 +8,8 @@ from types import SimpleNamespace
 
 import pytest
 
-from lean_explore.extract import doc_gen4
-from lean_explore.extract.doc_gen4 import (
+from lean_explore.extract.docgen import build
+from lean_explore.extract.docgen.build import (
     _clear_workspace_cache,
     _docgen_facet,
     _get_library_names,
@@ -20,7 +20,7 @@ from lean_explore.extract.doc_gen4 import (
     _uses_sqlite_docgen,
     run_doc_gen4,
 )
-from lean_explore.extract.package_registry import PACKAGE_REGISTRY
+from lean_explore.extract.packages.registry import PACKAGE_REGISTRY
 
 SQLITE_TOOLCHAIN = "leanprover/lean4:v4.29.0-rc2"
 LEGACY_TOOLCHAIN = "leanprover/lean4:v4.29.0-rc1"
@@ -54,7 +54,7 @@ class FakeSubprocess:
 def fake_subprocess(monkeypatch) -> FakeSubprocess:
     """Install a FakeSubprocess that always succeeds."""
     fake = FakeSubprocess()
-    monkeypatch.setattr(doc_gen4, "subprocess", fake)
+    monkeypatch.setattr(build, "subprocess", fake)
     return fake
 
 
@@ -62,14 +62,14 @@ def fake_subprocess(monkeypatch) -> FakeSubprocess:
 def sleeps(monkeypatch) -> list[float]:
     """Record retry delays instead of sleeping."""
     delays: list[float] = []
-    monkeypatch.setattr(doc_gen4, "time", SimpleNamespace(sleep=delays.append))
+    monkeypatch.setattr(build, "time", SimpleNamespace(sleep=delays.append))
     return delays
 
 
 @pytest.fixture
 def workspaces(tmp_path, monkeypatch):
     """Point package workspaces at a temporary directory."""
-    monkeypatch.setattr(doc_gen4, "WORKSPACES_ROOT", tmp_path)
+    monkeypatch.setattr(build, "WORKSPACES_ROOT", tmp_path)
     return tmp_path
 
 
@@ -139,7 +139,7 @@ class TestWorkspaceHelpers:
             'require «doc-gen4» from git\n  "https://github.com/leanprover/doc-gen4"'
         )
         monkeypatch.setattr(
-            doc_gen4,
+            build,
             "get_package_toolchain",
             lambda config: ("leanprover/lean4:v4.27.0", "main"),
         )
@@ -227,16 +227,16 @@ def recorded_run(monkeypatch) -> list:
         calls.append(("setup", config.name))
         return toolchains[config.name], "main"
 
-    monkeypatch.setattr(doc_gen4, "_setup_workspace", setup)
+    monkeypatch.setattr(build, "_setup_workspace", setup)
     monkeypatch.setattr(
-        doc_gen4, "_clear_workspace_cache", lambda path: calls.append(("clear", path))
+        build, "_clear_workspace_cache", lambda path: calls.append(("clear", path))
     )
     monkeypatch.setattr(
-        doc_gen4,
+        build,
         "_run_lake_for_package",
         lambda name, verbose: calls.append(("lake", name)),
     )
-    monkeypatch.setattr(doc_gen4, "WORKSPACES_ROOT", doc_gen4.Path("ws"))
+    monkeypatch.setattr(build, "WORKSPACES_ROOT", build.Path("ws"))
     return calls
 
 
@@ -249,7 +249,7 @@ class TestRunDocGen4:
 
         assert recorded_run == [
             ("setup", "mathlib"),
-            ("clear", doc_gen4.Path("ws/mathlib")),
+            ("clear", build.Path("ws/mathlib")),
             ("lake", "mathlib"),
             ("setup", "flt"),
             ("lake", "flt"),
@@ -263,7 +263,7 @@ class TestRunDocGen4:
     async def test_fresh_without_setup_always_clears(self, recorded_run):
         """Without setup the toolchain is unknown, so the cache is cleared."""
         await run_doc_gen4(["flt"], setup=False, fresh=True)
-        assert recorded_run == [("clear", doc_gen4.Path("ws/flt")), ("lake", "flt")]
+        assert recorded_run == [("clear", build.Path("ws/flt")), ("lake", "flt")]
 
     async def test_defaults_to_extraction_order(self, recorded_run):
         """All registry packages are processed, mathlib first."""

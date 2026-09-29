@@ -3,7 +3,7 @@
 This module contains the registry of Lean packages available for extraction.
 """
 
-from lean_explore.extract.package_config import PackageConfig, VersionStrategy
+from lean_explore.extract.packages.config import PackageConfig, VersionStrategy
 
 PACKAGE_REGISTRY: dict[str, PackageConfig] = {
     "mathlib": PackageConfig(

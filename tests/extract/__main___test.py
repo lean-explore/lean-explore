@@ -297,27 +297,25 @@ class TestSteps:
 
     async def test_doc_gen4_step(self, monkeypatch):
         """The doc-gen4 step forwards the fresh flag."""
-        from lean_explore.extract import doc_gen4
+        from lean_explore.extract.docgen import build
 
         calls: list = []
-        monkeypatch.setattr(doc_gen4, "run_doc_gen4", _recorder(calls, "docgen"))
+        monkeypatch.setattr(build, "run_doc_gen4", _recorder(calls, "docgen"))
         await pipeline._run_doc_gen4_step(fresh=True)
         assert calls == [("docgen", (), {"fresh": True})]
 
     async def test_extract_step(self, monkeypatch):
         """The extract step passes the engine through."""
-        from lean_explore.extract import doc_parser
+        from lean_explore.extract.docgen import parser
 
         calls: list = []
-        monkeypatch.setattr(
-            doc_parser, "extract_declarations", _recorder(calls, "extract")
-        )
+        monkeypatch.setattr(parser, "extract_declarations", _recorder(calls, "extract"))
         await pipeline._run_extract_step("engine")
         assert calls == [("extract", ("engine",), {})]
 
     async def test_informalize_step(self, monkeypatch):
         """Informalization settings map onto informalize_declarations kwargs."""
-        from lean_explore.extract import informalize
+        from lean_explore.extract.informalize import pipeline as informalize
 
         calls: list = []
         monkeypatch.setattr(

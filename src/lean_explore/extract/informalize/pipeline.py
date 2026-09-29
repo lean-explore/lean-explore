@@ -24,8 +24,8 @@ from lean_explore.extract._cache import (
     load_cache_from_databases,
     split_cache_hits,
 )
-from lean_explore.extract.dependency_layers import build_dependency_layers
-from lean_explore.extract.informalize_generation import (
+from lean_explore.extract.informalize.dependency_layers import build_dependency_layers
+from lean_explore.extract.informalize.generation import (
     DeclarationData,
     InformalizationCache,
     InformalizationResult,

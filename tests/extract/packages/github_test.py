@@ -5,8 +5,8 @@ import urllib.request
 
 import pytest
 
-from lean_explore.extract import github
-from lean_explore.extract.github import (
+from lean_explore.extract.packages import github
+from lean_explore.extract.packages.github import (
     extract_lean_version,
     fetch_latest_tag,
     fetch_lean_toolchain,

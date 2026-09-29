@@ -78,7 +78,7 @@ def build_package_cache(
         Dictionary mapping lowercase package names to their directory paths.
         The Lean toolchain sources, if found, are stored under ``"lean4"``.
     """
-    from lean_explore.extract.package_utils import get_extraction_order
+    from lean_explore.extract.packages.workspace import get_extraction_order
 
     lean_root = Path(lean_root)
     cache = {}

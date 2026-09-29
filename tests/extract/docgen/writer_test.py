@@ -4,7 +4,7 @@ import json
 
 from sqlalchemy import select
 
-from lean_explore.extract.declaration_writer import insert_declarations_batch
+from lean_explore.extract.docgen.writer import insert_declarations_batch
 from lean_explore.extract.types import Declaration
 from lean_explore.models import Declaration as DBDeclaration
 

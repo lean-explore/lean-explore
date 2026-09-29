@@ -2,7 +2,7 @@
 
 import pytest
 
-from lean_explore.extract.dependency_layers import (
+from lean_explore.extract.informalize.dependency_layers import (
     build_dependency_layers,
     parse_dependencies,
 )

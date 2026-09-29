@@ -2,7 +2,7 @@
 
 import pytest
 
-from lean_explore.extract.projection_filter import (
+from lean_explore.extract.docgen.projection_filter import (
     filter_auto_generated_projections,
     strip_lean_comments,
 )

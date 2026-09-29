@@ -2,11 +2,11 @@
 
 import pytest
 
-from lean_explore.extract.rendered_code import (
+from lean_explore.extract.docgen.rendered_code import (
     BlobReader,
     extract_names_from_rendered_code,
 )
-from tests.extract.docgen_fixtures import (
+from tests.extract.docgen.fixtures import (
     append_node,
     const_node,
     const_tag,

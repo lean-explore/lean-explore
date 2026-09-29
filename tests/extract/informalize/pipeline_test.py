@@ -6,8 +6,8 @@ client, and checks what ends up stored in the database.
 
 import pytest
 
-from lean_explore.extract import informalize
-from lean_explore.extract.informalize import informalize_declarations
+from lean_explore.extract.informalize import pipeline
+from lean_explore.extract.informalize.pipeline import informalize_declarations
 from tests.extract.builders import (
     FakeLLMClient,
     create_database,
@@ -22,7 +22,7 @@ from tests.extract.builders import (
 def llm(monkeypatch) -> FakeLLMClient:
     """Install a fake LLM client in place of OpenRouterClient."""
     client = FakeLLMClient()
-    monkeypatch.setattr(informalize, "OpenRouterClient", lambda: client)
+    monkeypatch.setattr(pipeline, "OpenRouterClient", lambda: client)
     return client
 
 
@@ -33,7 +33,7 @@ def no_llm(monkeypatch):
     def fail():
         raise AssertionError("OpenRouterClient should not be created")
 
-    monkeypatch.setattr(informalize, "OpenRouterClient", fail)
+    monkeypatch.setattr(pipeline, "OpenRouterClient", fail)
 
 
 async def _informalize(tmp_path, declarations, **kwargs) -> dict:
@@ -181,7 +181,7 @@ class TestInformalizeDeclarations:
             async def generate(self, **kwargs):
                 raise RuntimeError("rate limited")
 
-        monkeypatch.setattr(informalize, "OpenRouterClient", FailingClient)
+        monkeypatch.setattr(pipeline, "OpenRouterClient", FailingClient)
 
         with pytest.raises(RuntimeError, match="rate limited"):
             await _informalize(tmp_path, [make_declaration("Base")])

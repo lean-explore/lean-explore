@@ -12,8 +12,8 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
-from lean_explore.extract.docgen_common import drop_self_references, new_progress
-from lean_explore.extract.lean_source import SourceTextReader
+from lean_explore.extract.docgen.common import drop_self_references, new_progress
+from lean_explore.extract.docgen.lean_source import SourceTextReader
 from lean_explore.extract.types import Declaration
 
 

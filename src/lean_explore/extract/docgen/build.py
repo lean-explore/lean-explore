@@ -12,10 +12,10 @@ import subprocess
 import time
 from pathlib import Path
 
-from lean_explore.extract.github import extract_lean_version
-from lean_explore.extract.package_config import PackageConfig
-from lean_explore.extract.package_registry import PACKAGE_REGISTRY
-from lean_explore.extract.package_utils import (
+from lean_explore.extract.packages.config import PackageConfig
+from lean_explore.extract.packages.github import extract_lean_version
+from lean_explore.extract.packages.registry import PACKAGE_REGISTRY
+from lean_explore.extract.packages.workspace import (
     get_extraction_order,
     get_package_toolchain,
     update_lakefile_docgen_version,

@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from lean_explore.extract.lean_source import (
+from lean_explore.extract.docgen.lean_source import (
     SourceTextReader,
     build_package_cache,
     construct_source_link,
@@ -13,7 +13,7 @@ from lean_explore.extract.lean_source import (
     read_lean_toolchain_version,
     read_source_lines,
 )
-from tests.extract.docgen_fixtures import MATHLIB_URL, mathlib_package_dir, write_file
+from tests.extract.docgen.fixtures import MATHLIB_URL, mathlib_package_dir, write_file
 
 LEAN4_URL = "https://github.com/leanprover/lean4/blob/v4.29.0/"
 

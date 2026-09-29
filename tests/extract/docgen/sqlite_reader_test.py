@@ -4,13 +4,13 @@ import logging
 
 import pytest
 
-from lean_explore.extract.docgen_sqlite import (
+from lean_explore.extract.docgen.lean_source import build_package_cache
+from lean_explore.extract.docgen.sqlite_reader import (
     parse_declarations_from_sqlite,
     validate_docgen_sqlite,
 )
-from lean_explore.extract.lean_source import build_package_cache
-from lean_explore.extract.package_config import PackageConfig
-from tests.extract.docgen_fixtures import (
+from lean_explore.extract.packages.config import PackageConfig
+from tests.extract.docgen.fixtures import (
     MATHLIB_URL,
     DocgenRow,
     append_node,

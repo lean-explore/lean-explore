@@ -6,9 +6,9 @@ text), filters auto-generated projections, and inserts the result.
 
 Supports two doc-gen4 output formats:
 - SQLite database (api-docs.db): Used by doc-gen4 >= v4.29.0-rc2
-  (see :mod:`lean_explore.extract.docgen_sqlite`)
+  (see :mod:`lean_explore.extract.docgen.sqlite_reader`)
 - BMP JSON files (.bmp): Used by doc-gen4 < v4.29.0-rc2
-  (see :mod:`lean_explore.extract.docgen_bmp`)
+  (see :mod:`lean_explore.extract.docgen.bmp_reader`)
 """
 
 import logging
@@ -16,17 +16,19 @@ from pathlib import Path
 
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession
 
-from lean_explore.extract.declaration_writer import insert_declarations_batch
-from lean_explore.extract.docgen_bmp import parse_declarations_from_files
-from lean_explore.extract.docgen_sqlite import (
-    parse_declarations_from_sqlite,
-    validate_docgen_sqlite,
-)
-from lean_explore.extract.lean_source import (
+from lean_explore.extract.docgen.bmp_reader import parse_declarations_from_files
+from lean_explore.extract.docgen.lean_source import (
     build_package_cache,
     read_lean_toolchain_version,
 )
-from lean_explore.extract.projection_filter import filter_auto_generated_projections
+from lean_explore.extract.docgen.projection_filter import (
+    filter_auto_generated_projections,
+)
+from lean_explore.extract.docgen.sqlite_reader import (
+    parse_declarations_from_sqlite,
+    validate_docgen_sqlite,
+)
+from lean_explore.extract.docgen.writer import insert_declarations_batch
 from lean_explore.extract.types import Declaration
 
 logger = logging.getLogger(__name__)
@@ -87,7 +89,7 @@ def _extract_package(lean_root: Path, package_name: str) -> list[Declaration]:
         The package's declarations, or an empty list if the workspace has no
         doc-gen4 output.
     """
-    from lean_explore.extract.package_registry import PACKAGE_REGISTRY
+    from lean_explore.extract.packages.registry import PACKAGE_REGISTRY
 
     package_config = PACKAGE_REGISTRY[package_name]
     workspace_path = lean_root / package_name
@@ -143,7 +145,7 @@ def _extract_all_packages(lean_root: Path) -> list[Declaration]:
     Raises:
         FileNotFoundError: If no declarations were extracted from any package.
     """
-    from lean_explore.extract.package_utils import get_extraction_order
+    from lean_explore.extract.packages.workspace import get_extraction_order
 
     all_declarations = []
     for package_name in get_extraction_order():
