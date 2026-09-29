@@ -135,6 +135,57 @@ def _cleanup_old_versions(current_version: str) -> None:
                 logger.warning("Failed to remove %s: %s", item.name, error)
 
 
+def _build_download_list(base_url: str, cache_path: Path) -> list[tuple[str, Path]]:
+    """List every (URL, destination) pair that makes up a data toolchain.
+
+    Args:
+        base_url: Remote base URL of the version's assets.
+        cache_path: Local directory the version is installed into.
+
+    Returns:
+        Pairs of source URL and local destination path, top-level files first,
+        then each BM25 directory's files.
+    """
+    files_to_download = [
+        (f"{base_url}/{filename}", cache_path / filename) for filename in REQUIRED_FILES
+    ]
+    for directory_name, directory_files in BM25_DIRECTORIES.items():
+        for filename in directory_files:
+            url = f"{base_url}/{directory_name}/{filename}"
+            files_to_download.append((url, cache_path / directory_name / filename))
+    return files_to_download
+
+
+def _download_missing_files(
+    files_to_download: list[tuple[str, Path]], console: Console
+) -> None:
+    """Download each file whose destination does not already exist.
+
+    Args:
+        files_to_download: Pairs of source URL and local destination path.
+        console: Console the progress display renders to.
+
+    Raises:
+        ValueError: If any download fails.
+    """
+    with Progress(
+        TextColumn("[bold blue]{task.description}"),
+        BarColumn(),
+        DownloadColumn(),
+        TransferSpeedColumn(),
+        console=console,
+    ) as progress:
+        for url, destination in files_to_download:
+            if destination.exists():
+                logger.info("Skipping existing file: %s", destination.name)
+                continue
+            try:
+                _download_file(url, destination, progress)
+            except requests.exceptions.RequestException as error:
+                logger.error("Failed to download %s: %s", url, error)
+                raise ValueError(f"Failed to download {url}: {error}") from error
+
+
 def _install_toolchain(version: str | None = None) -> None:
     """Install the data toolchain for the specified version.
 
@@ -160,38 +211,7 @@ def _install_toolchain(version: str | None = None) -> None:
 
     base_url = f"{Config.R2_ASSETS_BASE_URL}/assets/{resolved_version}"
     cache_path = Config.CACHE_DIRECTORY / resolved_version
-
-    # Build list of all files to download
-    files_to_download: list[tuple[str, Path]] = []
-
-    for filename in REQUIRED_FILES:
-        url = f"{base_url}/{filename}"
-        destination = cache_path / filename
-        files_to_download.append((url, destination))
-
-    for directory_name, directory_files in BM25_DIRECTORIES.items():
-        for filename in directory_files:
-            url = f"{base_url}/{directory_name}/{filename}"
-            destination = cache_path / directory_name / filename
-            files_to_download.append((url, destination))
-
-    # Download all files with progress
-    with Progress(
-        TextColumn("[bold blue]{task.description}"),
-        BarColumn(),
-        DownloadColumn(),
-        TransferSpeedColumn(),
-        console=console,
-    ) as progress:
-        for url, destination in files_to_download:
-            if destination.exists():
-                logger.info("Skipping existing file: %s", destination.name)
-                continue
-            try:
-                _download_file(url, destination, progress)
-            except requests.exceptions.RequestException as error:
-                logger.error("Failed to download %s: %s", url, error)
-                raise ValueError(f"Failed to download {url}: {error}") from error
+    _download_missing_files(_build_download_list(base_url, cache_path), console)
 
     # Set this version as active and clean up old versions
     _write_active_version(resolved_version)
