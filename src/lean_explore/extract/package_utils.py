@@ -8,31 +8,27 @@ import logging
 import re
 from pathlib import Path
 
+from lean_explore.extract.github import fetch_latest_tag, fetch_lean_toolchain
 from lean_explore.extract.package_config import PackageConfig, VersionStrategy
 from lean_explore.extract.package_registry import PACKAGE_REGISTRY
 
 logger = logging.getLogger(__name__)
 
+_DEFAULT_BRANCHES = ("main", "master")
+"""Branches tried, in order, for packages using ``VersionStrategy.LATEST``."""
 
-def get_package_for_module(module_name: str) -> str | None:
-    """Determine which package a module belongs to.
-
-    Args:
-        module_name: Fully qualified module name (e.g., 'Mathlib.Data.List.Basic')
-
-    Returns:
-        Package name or None if not recognized.
-    """
-    for package_name, configuration in PACKAGE_REGISTRY.items():
-        if configuration.should_include_module(module_name):
-            return package_name
-    return None
+_DOCGEN_REQUIRE_PATTERN = re.compile(
+    r"require «doc-gen4» from git\s+"
+    r'"https://github\.com/leanprover/doc-gen4"(?:\s+@\s+"[^"]*")?'
+)
 
 
 def get_extraction_order() -> list[str]:
     """Get packages in dependency order for extraction.
 
-    Returns packages ordered so dependencies come before dependents.
+    Returns:
+        Registry package names ordered so dependencies come before dependents.
+        Dependencies missing from the registry are skipped.
     """
     result: list[str] = []
     visited: set[str] = set()
@@ -53,6 +49,32 @@ def get_extraction_order() -> list[str]:
     return result
 
 
+def _fetch_default_branch_toolchain(
+    package_configuration: PackageConfig,
+) -> tuple[str, str]:
+    """Fetch the toolchain from the first default branch that has one.
+
+    Args:
+        package_configuration: Package configuration.
+
+    Returns:
+        Tuple of (lean_toolchain, branch).
+
+    Raises:
+        RuntimeError: If neither ``main`` nor ``master`` has a toolchain file.
+    """
+    for branch in _DEFAULT_BRANCHES:
+        try:
+            toolchain = fetch_lean_toolchain(package_configuration.git_url, branch)
+        except RuntimeError:
+            continue
+        return toolchain, branch
+    raise RuntimeError(
+        f"Could not fetch toolchain from main or master for "
+        f"{package_configuration.name}"
+    )
+
+
 def get_package_toolchain(package_configuration: PackageConfig) -> tuple[str, str]:
     """Get the toolchain and ref for a package based on its version strategy.
 
@@ -61,24 +83,16 @@ def get_package_toolchain(package_configuration: PackageConfig) -> tuple[str, st
 
     Returns:
         Tuple of (lean_toolchain, git_ref) where git_ref is the branch/tag to use.
-    """
-    from lean_explore.extract.github import fetch_latest_tag, fetch_lean_toolchain
 
+    Raises:
+        RuntimeError: If the toolchain or tags cannot be fetched.
+    """
     if package_configuration.version_strategy == VersionStrategy.LATEST:
-        for branch in ["main", "master"]:
-            try:
-                toolchain = fetch_lean_toolchain(package_configuration.git_url, branch)
-                return toolchain, branch
-            except RuntimeError:
-                continue
-        raise RuntimeError(
-            f"Could not fetch toolchain from main or master for "
-            f"{package_configuration.name}"
-        )
-    else:
-        latest_tag = fetch_latest_tag(package_configuration.git_url)
-        toolchain = fetch_lean_toolchain(package_configuration.git_url, latest_tag)
-        return toolchain, latest_tag
+        return _fetch_default_branch_toolchain(package_configuration)
+
+    latest_tag = fetch_latest_tag(package_configuration.git_url)
+    toolchain = fetch_lean_toolchain(package_configuration.git_url, latest_tag)
+    return toolchain, latest_tag
 
 
 def update_lakefile_docgen_version(lakefile_path: Path, lean_version: str) -> None:
@@ -89,24 +103,20 @@ def update_lakefile_docgen_version(lakefile_path: Path, lean_version: str) -> No
     appear before the main package ``require`` so that the main package's
     transitive dependency versions take precedence during resolution.
 
+    The file is rewritten only when the content changes; a lakefile without a
+    doc-gen4 ``require`` is left untouched.
+
     Args:
         lakefile_path: Path to lakefile.lean
         lean_version: Lean version like 'v4.27.0'
     """
     content = lakefile_path.read_text()
-
-    pattern = (
-        r"require «doc-gen4» from git\s+"
-        r'"https://github\.com/leanprover/doc-gen4"(?:\s+@\s+"[^"]*")?'
-    )
     replacement = (
         f"require «doc-gen4» from git\n"
         f'  "https://github.com/leanprover/doc-gen4" @ "{lean_version}"'
     )
-    new_content = re.sub(pattern, replacement, content)
+    new_content = _DOCGEN_REQUIRE_PATTERN.sub(replacement, content)
 
     if new_content != content:
         lakefile_path.write_text(new_content)
-        logger.info(
-            "Updated doc-gen4 version to %s in %s", lean_version, lakefile_path
-        )
+        logger.info("Updated doc-gen4 version to %s in %s", lean_version, lakefile_path)

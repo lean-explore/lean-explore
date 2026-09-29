@@ -23,6 +23,9 @@ from lean_explore.extract.package_utils import (
 
 logger = logging.getLogger(__name__)
 
+WORKSPACES_ROOT = Path("lean")
+"""Directory holding one Lake workspace per package, relative to the CWD."""
+
 
 def _uses_sqlite_docgen(lean_version: str) -> bool:
     """Return whether the matching doc-gen4 release writes api-docs.db.
@@ -137,16 +140,26 @@ def _run_lake_build_target(
     raise RuntimeError(f"lake build failed for {package_name} target {target}")
 
 
+def _workspace_path(package_name: str) -> Path:
+    """Return the Lake workspace directory for a package."""
+    return WORKSPACES_ROOT / package_name
+
+
 def _setup_workspace(package_config: PackageConfig) -> tuple[str, str]:
     """Fetch toolchain from GitHub and update lakefile.
+
+    Args:
+        package_config: Configuration of the package to set up.
 
     Returns:
         Tuple of (lean_toolchain, git_ref).
     """
-    workspace_path = Path("lean") / package_config.name
+    workspace_path = _workspace_path(package_config.name)
     lakefile_path = workspace_path / "lakefile.lean"
     toolchain_file = workspace_path / "lean-toolchain"
 
+    # NOTE: git_ref is only reported; it is not written into the lakefile, so
+    # TAGGED packages still build whatever revision the lakefile requires.
     lean_toolchain, git_ref = get_package_toolchain(package_config)
     lean_version = extract_lean_version(lean_toolchain)
 
@@ -197,7 +210,9 @@ def _run_lake_update_with_retry(
             delay = base_delay * (2 ** (attempt - 1))
             logger.warning(
                 "[%s] lake update failed (attempt %d), retrying in %.0fs...",
-                package_name, attempt, delay,
+                package_name,
+                attempt,
+                delay,
             )
             logger.warning("[%s] stderr: %s", package_name, result.stderr.strip())
             time.sleep(delay)
@@ -206,51 +221,121 @@ def _run_lake_update_with_retry(
             raise RuntimeError(f"lake update failed for {package_name}")
 
 
-def _run_lake_for_package(package_name: str, verbose: bool = False) -> None:
-    """Run lake update, cache get, and doc-gen4 for a package."""
-    workspace_path = Path("lean") / package_name
-    package_config = PACKAGE_REGISTRY[package_name]
+def _lake_env() -> dict[str, str]:
+    """Return the environment for Lake subprocesses.
+
+    Mathlib's post-update cache hook is disabled because the cache is fetched
+    explicitly by ``_fetch_mathlib_cache``.
+    """
     env = os.environ.copy()
     env["MATHLIB_NO_CACHE_ON_UPDATE"] = "1"
+    return env
 
-    _run_lake_update_with_retry(workspace_path, package_name, env, verbose)
 
-    # Fetch mathlib cache for packages that depend on mathlib
-    if "mathlib" in package_config.depends_on or package_name == "mathlib":
-        logger.info("[%s] Fetching mathlib cache...", package_name)
-        result = subprocess.run(
-            ["lake", "exe", "cache", "get"],
-            cwd=workspace_path,
-            capture_output=True,
-            text=True,
-            env=env,
-        )
-        if verbose and result.stdout:
-            logger.info(result.stdout)
-        if result.returncode != 0:
-            logger.warning("[%s] Cache fetch failed (non-fatal)", package_name)
+def _fetch_mathlib_cache(
+    workspace_path: Path, package_name: str, env: dict[str, str], verbose: bool
+) -> None:
+    """Run ``lake exe cache get``, logging (not raising) on failure.
 
-    # For SQLite-format doc-gen4 we only need :docInfo, which populates
-    # api-docs.db and stops there. The :docs facet additionally runs `fromDb`
-    # to generate all HTML and the search index, which we don't consume.
-    # Older BMP-format doc-gen4 has no :docInfo facet, so :docs is the only
-    # option there.
+    Args:
+        workspace_path: Path to the Lake workspace directory.
+        package_name: Name of the package for log messages.
+        env: Environment variables to pass to the subprocess.
+        verbose: Log stdout from the cache command.
+    """
+    logger.info("[%s] Fetching mathlib cache...", package_name)
+    result = subprocess.run(
+        ["lake", "exe", "cache", "get"],
+        cwd=workspace_path,
+        capture_output=True,
+        text=True,
+        env=env,
+    )
+    if verbose and result.stdout:
+        logger.info(result.stdout)
+    if result.returncode != 0:
+        logger.warning("[%s] Cache fetch failed (non-fatal)", package_name)
+
+
+def _docgen_facet(workspace_path: Path) -> str:
+    """Choose the doc-gen4 Lake facet to build for a workspace.
+
+    For SQLite-format doc-gen4 we only need ``:docInfo``, which populates
+    api-docs.db and stops there. The ``:docs`` facet additionally runs
+    ``fromDb`` to generate all HTML and the search index, which we don't
+    consume. Older BMP-format doc-gen4 has no ``:docInfo`` facet, so ``:docs``
+    is the only option there (and the fallback when no toolchain is pinned).
+
+    Args:
+        workspace_path: Path to the Lake workspace directory.
+
+    Returns:
+        ``"docInfo"`` or ``"docs"``.
+    """
     toolchain_file = workspace_path / "lean-toolchain"
-    lake_target = "docs"
     if toolchain_file.is_file():
         toolchain = toolchain_file.read_text().strip()
         if toolchain and _uses_sqlite_docgen(toolchain):
-            lake_target = "docInfo"
+            return "docInfo"
+    return "docs"
 
-    lib_names = _get_library_names(package_name)
-    for lib_name in lib_names:
+
+def _run_lake_for_package(package_name: str, verbose: bool = False) -> None:
+    """Run lake update, cache get, and doc-gen4 for a package.
+
+    Args:
+        package_name: Registry name of the package.
+        verbose: Log stdout from Lake commands.
+    """
+    workspace_path = _workspace_path(package_name)
+    package_config = PACKAGE_REGISTRY[package_name]
+    env = _lake_env()
+
+    _run_lake_update_with_retry(workspace_path, package_name, env, verbose)
+
+    if "mathlib" in package_config.depends_on or package_name == "mathlib":
+        _fetch_mathlib_cache(workspace_path, package_name, env, verbose)
+
+    facet = _docgen_facet(workspace_path)
+    for lib_name in _get_library_names(package_name):
+        # NOTE: build failures are tolerated, so a failed build silently
+        # reuses whatever api-docs.db / doc-data a previous run left behind.
         _run_lake_build_target(
             workspace_path,
             package_name,
-            f"{lib_name}:{lake_target}",
+            f"{lib_name}:{facet}",
             env,
             allow_failure=True,
         )
+
+
+def _prepare_package(config: PackageConfig, setup: bool, fresh: bool) -> None:
+    """Set up a package workspace and, if fresh, clear stale Lake state.
+
+    Doc-gen4 switched from BMP files to api-docs.db in v4.29.0-rc2. The
+    SQLite format handles incremental updates, while legacy BMP output
+    requires a cache clear to avoid stale files. Without ``setup`` the
+    toolchain is unknown, so a fresh run always clears the cache.
+
+    Args:
+        config: Configuration of the package to prepare.
+        setup: Fetch the toolchain and update the lakefile.
+        fresh: Clear cached dependencies for legacy doc-gen4 workspaces.
+    """
+    toolchain = None
+    if setup:
+        toolchain, ref = _setup_workspace(config)
+        logger.info("Toolchain: %s, ref: %s", toolchain, ref)
+
+    if not fresh:
+        return
+    if toolchain and _uses_sqlite_docgen(toolchain):
+        logger.info(
+            "[%s] Skipping cache clear (api-docs.db handles incremental updates)",
+            config.name,
+        )
+    else:
+        _clear_workspace_cache(_workspace_path(config.name))
 
 
 async def run_doc_gen4(
@@ -270,6 +355,7 @@ async def run_doc_gen4(
         verbose: Enable verbose logging.
 
     Raises:
+        ValueError: If a package is not in the registry.
         RuntimeError: If any build step fails.
     """
     if packages is None:
@@ -281,34 +367,8 @@ async def run_doc_gen4(
         if package_name not in PACKAGE_REGISTRY:
             raise ValueError(f"Unknown package: {package_name}")
 
-        config = PACKAGE_REGISTRY[package_name]
-        workspace_path = Path("lean") / package_name
         logger.info("\n%s\nPackage: %s\n%s", "=" * 50, package_name, "=" * 50)
-
-        toolchain = None
-        ref = None
-        if fresh:
-            if setup:
-                toolchain, ref = _setup_workspace(config)
-                logger.info("Toolchain: %s, ref: %s", toolchain, ref)
-
-            # Doc-gen4 switched from BMP files to api-docs.db in v4.29.0-rc2.
-            # The SQLite format handles incremental updates, while legacy BMP
-            # output requires a cache clear to avoid stale files.
-            if toolchain and _uses_sqlite_docgen(toolchain):
-                logger.info(
-                    "[%s] Skipping cache clear "
-                    "(api-docs.db handles incremental updates)",
-                    package_name,
-                )
-            else:
-                _clear_workspace_cache(workspace_path)
-
-        if setup:
-            if toolchain is None or ref is None:
-                toolchain, ref = _setup_workspace(config)
-                logger.info("Toolchain: %s, ref: %s", toolchain, ref)
-
+        _prepare_package(PACKAGE_REGISTRY[package_name], setup, fresh)
         _run_lake_for_package(package_name, verbose)
 
     logger.info("doc-gen4 generation complete for all packages")
