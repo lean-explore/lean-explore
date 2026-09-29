@@ -1,6 +1,6 @@
 """TypedDict schemas describing the serialized documentation data."""
 
-from typing import NotRequired, TypedDict
+from typing_extensions import NotRequired, TypedDict
 
 
 class ParameterDict(TypedDict):
