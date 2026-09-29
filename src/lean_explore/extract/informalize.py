@@ -103,7 +103,8 @@ def _read_cached_informalizations(
                 Declaration.informalization,
             ).where(Declaration.informalization.isnot(None))
             for name, source_text, informalization in session.execute(stmt):
-                yield (name, source_text), informalization
+                if informalization is not None:
+                    yield (name, source_text), informalization
     finally:
         engine.dispose()
 

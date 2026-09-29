@@ -146,7 +146,9 @@ def _build_faiss_index(embeddings: np.ndarray, device: str) -> faiss.Index:
 
     # Use inner product (cosine similarity on normalized vectors)
     quantizer = faiss.IndexFlatIP(dimension)
-    index = faiss.IndexIVFFlat(quantizer, dimension, nlist, faiss.METRIC_INNER_PRODUCT)
+    index: faiss.Index = faiss.IndexIVFFlat(
+        quantizer, dimension, nlist, faiss.METRIC_INNER_PRODUCT
+    )
 
     if device == "cuda" and faiss.get_num_gpus() > 0:
         logger.info("Training IVF index on GPU")

@@ -1,8 +1,10 @@
 """Write extracted declarations to the search database."""
 
 import json
+from typing import cast
 
 from sqlalchemy.dialects.postgresql import Insert, insert
+from sqlalchemy.engine import CursorResult
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from lean_explore.extract.docgen_common import new_progress
@@ -57,7 +59,7 @@ async def insert_declarations_batch(
             for i in range(0, len(declarations), batch_size):
                 for declaration in declarations[i : i + batch_size]:
                     result = await session.execute(_insert_statement(declaration))
-                    inserted_count += result.rowcount
+                    inserted_count += cast(CursorResult, result).rowcount
                     progress.update(task, advance=1)
 
     return inserted_count

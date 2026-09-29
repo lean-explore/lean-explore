@@ -91,9 +91,11 @@ class RerankerClient:
         # Use float16 on GPU for memory efficiency
         dtype = torch.float16 if self.device == "cuda" else torch.float32
 
+        # transformers 5 types PreTrainedModel.to() through a decorator that
+        # mypy misreads as taking a model argument; the call itself is correct.
         self.model = AutoModelForCausalLM.from_pretrained(
             model_name, torch_dtype=dtype, trust_remote_code=True
-        ).to(self.device)
+        ).to(self.device)  # type: ignore[arg-type]
         self.model.eval()
 
         # Get token IDs for true/false classification
