@@ -1,327 +1,169 @@
 """Tests for the API client module.
 
-These tests verify the ApiClient class for interacting with the remote
-Lean Explore API.
+HTTP is served by ``httpx.MockTransport`` so real request construction, status
+handling, and JSON decoding run without network access.
 """
-
-from unittest.mock import AsyncMock, MagicMock, patch
 
 import httpx
 import pytest
 
 from lean_explore.api.client import ApiClient
+from lean_explore.config import Config
 from lean_explore.models import SearchResponse, SearchResult
+
+
+def declaration(declaration_id: int, name: str) -> dict:
+    """Build a declaration payload as returned by the API."""
+    return {
+        "id": declaration_id,
+        "name": name,
+        "module": "Init.Data.Nat.Basic",
+        "docstring": f"Docs for {name}",
+        "source_text": f"def {name} := ...",
+        "source_link": f"https://github.com/example#L{declaration_id}",
+        "dependencies": None,
+        "informalization": f"Informal {name}",
+    }
+
+
+@pytest.fixture
+def api(monkeypatch):
+    """Route ApiClient traffic to a programmable MockTransport.
+
+    Returns a state dict: set ``handler`` to a function taking an
+    ``httpx.Request`` and returning an ``httpx.Response``; sent requests and
+    client constructor kwargs are recorded in ``requests`` and ``client_kwargs``.
+    """
+    state: dict = {"requests": [], "client_kwargs": [], "handler": None}
+    real_async_client = httpx.AsyncClient
+
+    def dispatch(request: httpx.Request) -> httpx.Response:
+        state["requests"].append(request)
+        return state["handler"](request)
+
+    def make_client(**kwargs):
+        state["client_kwargs"].append(kwargs)
+        return real_async_client(transport=httpx.MockTransport(dispatch), **kwargs)
+
+    monkeypatch.setattr("lean_explore.api.client.httpx.AsyncClient", make_client)
+    return state
 
 
 class TestApiClientInit:
     """Tests for ApiClient initialization."""
 
-    def test_init_with_api_key_parameter(self):
-        """Test that a legacy API key parameter is accepted and ignored."""
-        client = ApiClient(api_key="test-key-123")
+    def test_legacy_api_key_is_accepted_and_ignored(self, monkeypatch):
+        """Neither the argument nor the env var produces credentials."""
+        monkeypatch.setenv("LEANEXPLORE_API_KEY", "env-key")
+        client = ApiClient(api_key="param-key")
         assert client.api_key is None
         assert client._headers == {}
 
-    def test_init_with_env_variable(self):
-        """Test that a legacy API key environment variable is ignored."""
-        with patch.dict("os.environ", {"LEANEXPLORE_API_KEY": "env-key-456"}):
-            client = ApiClient()
-            assert client.api_key is None
-            assert client._headers == {}
-
-    def test_init_parameter_overrides_env(self):
-        """Test that all legacy API key inputs are ignored."""
-        with patch.dict("os.environ", {"LEANEXPLORE_API_KEY": "env-key"}):
-            client = ApiClient(api_key="param-key")
-            assert client.api_key is None
-            assert client._headers == {}
-
-    def test_init_without_api_key(self):
-        """Test that no credentials are needed."""
-        with patch.dict("os.environ", {}, clear=True):
-            client = ApiClient()
-            assert client.api_key is None
-            assert client._headers == {}
-
-    def test_init_custom_timeout(self):
-        """Test initialization with custom timeout."""
-        client = ApiClient(api_key="test-key", timeout=30.0)
-        assert client.timeout == 30.0
-
-    def test_init_default_timeout(self):
-        """Test default timeout value."""
-        client = ApiClient(api_key="test-key")
+    def test_defaults(self):
+        """Base URL comes from Config and the timeout defaults to 10s."""
+        client = ApiClient()
+        assert client.base_url == Config.API_BASE_URL
         assert client.timeout == 10.0
 
-    def test_init_sets_base_url(self):
-        """Test that base URL is set from Config."""
-        client = ApiClient(api_key="test-key")
-        assert client.base_url is not None
-        assert "leanexplore" in client.base_url.lower()
+    def test_custom_timeout(self):
+        """A custom timeout is stored."""
+        assert ApiClient(timeout=30.0).timeout == 30.0
 
 
 class TestApiClientSearch:
-    """Tests for ApiClient.search method."""
+    """Tests for ApiClient.search."""
 
-    @pytest.fixture
-    def client(self):
-        """Create an ApiClient instance for testing."""
-        return ApiClient(api_key="test-api-key")
-
-    @pytest.fixture
-    def mock_search_response(self):
-        """Create a mock API search response."""
-        return {
-            "results": [
-                {
-                    "id": 1,
-                    "name": "Nat.add",
-                    "module": "Init.Data.Nat.Basic",
-                    "docstring": "Addition of natural numbers",
-                    "source_text": "def add (a b : Nat) : Nat := a + b",
-                    "source_link": "https://github.com/example#L100",
-                    "dependencies": None,
-                    "informalization": "Adds two natural numbers",
-                },
-                {
-                    "id": 2,
-                    "name": "Nat.mul",
-                    "module": "Init.Data.Nat.Basic",
-                    "docstring": "Multiplication of natural numbers",
-                    "source_text": "def mul (a b : Nat) : Nat := a * b",
-                    "source_link": "https://github.com/example#L110",
-                    "dependencies": None,
-                    "informalization": "Multiplies two natural numbers",
-                },
-            ],
-            "processing_time_ms": 42,
-        }
-
-    async def test_search_success(self, client, mock_search_response):
-        """Test successful search request."""
-        mock_response = MagicMock()
-        mock_response.json.return_value = mock_search_response
-        mock_response.raise_for_status = MagicMock()
-
-        with patch("httpx.AsyncClient") as mock_client_class:
-            mock_async_client = AsyncMock()
-            mock_async_client.get = AsyncMock(return_value=mock_response)
-            mock_async_client.__aenter__ = AsyncMock(return_value=mock_async_client)
-            mock_async_client.__aexit__ = AsyncMock(return_value=None)
-            mock_client_class.return_value = mock_async_client
-
-            response = await client.search(query="natural numbers", limit=10)
-
-            assert isinstance(response, SearchResponse)
-            assert response.query == "natural numbers"
-            assert response.count == 2
-            assert len(response.results) == 2
-            assert response.processing_time_ms == 42
-            assert response.results[0].name == "Nat.add"
-
-    async def test_search_empty_results(self, client):
-        """Test search with no results."""
-        mock_response = MagicMock()
-        mock_response.json.return_value = {"results": [], "processing_time_ms": 5}
-        mock_response.raise_for_status = MagicMock()
-
-        with patch("httpx.AsyncClient") as mock_client_class:
-            mock_async_client = AsyncMock()
-            mock_async_client.get = AsyncMock(return_value=mock_response)
-            mock_async_client.__aenter__ = AsyncMock(return_value=mock_async_client)
-            mock_async_client.__aexit__ = AsyncMock(return_value=None)
-            mock_client_class.return_value = mock_async_client
-
-            response = await client.search(query="nonexistent query")
-
-            assert response.count == 0
-            assert response.results == []
-
-    async def test_search_passes_parameters(self, client):
-        """Test that search passes correct parameters to API."""
-        mock_response = MagicMock()
-        mock_response.json.return_value = {"results": []}
-        mock_response.raise_for_status = MagicMock()
-
-        with patch("httpx.AsyncClient") as mock_client_class:
-            mock_async_client = AsyncMock()
-            mock_async_client.get = AsyncMock(return_value=mock_response)
-            mock_async_client.__aenter__ = AsyncMock(return_value=mock_async_client)
-            mock_async_client.__aexit__ = AsyncMock(return_value=None)
-            mock_client_class.return_value = mock_async_client
-
-            await client.search(query="test query", limit=25)
-
-            mock_async_client.get.assert_called_once()
-            call_args = mock_async_client.get.call_args
-            assert call_args.kwargs["params"]["q"] == "test query"
-            assert call_args.kwargs["params"]["limit"] == 25
-
-    async def test_search_does_not_include_auth_header(self, client):
-        """Test that search does not send a legacy API key."""
-        mock_response = MagicMock()
-        mock_response.json.return_value = {"results": []}
-        mock_response.raise_for_status = MagicMock()
-
-        with patch("httpx.AsyncClient") as mock_client_class:
-            mock_async_client = AsyncMock()
-            mock_async_client.get = AsyncMock(return_value=mock_response)
-            mock_async_client.__aenter__ = AsyncMock(return_value=mock_async_client)
-            mock_async_client.__aexit__ = AsyncMock(return_value=None)
-            mock_client_class.return_value = mock_async_client
-
-            await client.search(query="test")
-
-            call_args = mock_async_client.get.call_args
-            assert call_args.kwargs["headers"] == {}
-
-    async def test_search_http_error(self, client):
-        """Test that HTTP errors are propagated."""
-        mock_response = MagicMock()
-        mock_response.raise_for_status.side_effect = httpx.HTTPStatusError(
-            "Server Error",
-            request=MagicMock(),
-            response=MagicMock(status_code=500),
+    async def test_search_parses_results(self, api):
+        """Results are parsed into SearchResult objects in server order."""
+        api["handler"] = lambda request: httpx.Response(
+            200,
+            json={
+                "results": [declaration(1, "Nat.add"), declaration(2, "Nat.mul")],
+                "processing_time_ms": 42,
+            },
         )
+        response = await ApiClient().search("natural numbers", limit=10)
 
-        with patch("httpx.AsyncClient") as mock_client_class:
-            mock_async_client = AsyncMock()
-            mock_async_client.get = AsyncMock(return_value=mock_response)
-            mock_async_client.__aenter__ = AsyncMock(return_value=mock_async_client)
-            mock_async_client.__aexit__ = AsyncMock(return_value=None)
-            mock_client_class.return_value = mock_async_client
+        assert isinstance(response, SearchResponse)
+        assert response.query == "natural numbers"
+        assert [r.name for r in response.results] == ["Nat.add", "Nat.mul"]
+        assert all(isinstance(r, SearchResult) for r in response.results)
+        assert response.count == 2
+        assert response.processing_time_ms == 42
 
-            with pytest.raises(httpx.HTTPStatusError):
-                await client.search(query="test")
+    async def test_search_request_shape(self, api):
+        """The request hits /search with query, limit, and no auth header."""
+        api["handler"] = lambda request: httpx.Response(200, json={"results": []})
+        await ApiClient(api_key="ignored", timeout=3.0).search("q", rerank_top=5)
 
-    async def test_search_default_limit(self, client):
-        """Test default limit parameter."""
-        mock_response = MagicMock()
-        mock_response.json.return_value = {"results": []}
-        mock_response.raise_for_status = MagicMock()
+        (request,) = api["requests"]
+        assert str(request.url).startswith(f"{Config.API_BASE_URL}/search?")
+        assert dict(request.url.params) == {"q": "q", "limit": "20"}
+        assert "authorization" not in request.headers
+        assert api["client_kwargs"] == [{"timeout": 3.0}]
 
-        with patch("httpx.AsyncClient") as mock_client_class:
-            mock_async_client = AsyncMock()
-            mock_async_client.get = AsyncMock(return_value=mock_response)
-            mock_async_client.__aenter__ = AsyncMock(return_value=mock_async_client)
-            mock_async_client.__aexit__ = AsyncMock(return_value=None)
-            mock_client_class.return_value = mock_async_client
+    async def test_search_joins_packages(self, api):
+        """Package filters are sent as one comma-separated parameter."""
+        api["handler"] = lambda request: httpx.Response(200, json={"results": []})
+        await ApiClient().search("q", limit=5, packages=["Mathlib", "Batteries"])
 
-            await client.search(query="test")
+        params = dict(api["requests"][0].url.params)
+        assert params == {"q": "q", "limit": "5", "packages": "Mathlib,Batteries"}
 
-            call_args = mock_async_client.get.call_args
-            assert call_args.kwargs["params"]["limit"] == 20
+    async def test_search_empty_packages_omitted(self, api):
+        """An empty package list sends no packages parameter."""
+        api["handler"] = lambda request: httpx.Response(200, json={"results": []})
+        await ApiClient().search("q", packages=[])
+        assert "packages" not in api["requests"][0].url.params
+
+    async def test_search_missing_fields_default(self, api):
+        """A body without results or timing yields an empty response."""
+        api["handler"] = lambda request: httpx.Response(200, json={})
+        response = await ApiClient().search("q")
+        assert response.results == []
+        assert response.count == 0
+        assert response.processing_time_ms is None
+
+    async def test_search_http_error(self, api):
+        """Non-2xx statuses raise HTTPStatusError."""
+        api["handler"] = lambda request: httpx.Response(500)
+        with pytest.raises(httpx.HTTPStatusError):
+            await ApiClient().search("q")
+
+    async def test_search_network_error(self, api):
+        """Transport failures raise RequestError."""
+
+        def fail(request):
+            raise httpx.ConnectError("refused", request=request)
+
+        api["handler"] = fail
+        with pytest.raises(httpx.RequestError):
+            await ApiClient().search("q")
 
 
 class TestApiClientGetById:
-    """Tests for ApiClient.get_by_id method."""
+    """Tests for ApiClient.get_by_id."""
 
-    @pytest.fixture
-    def client(self):
-        """Create an ApiClient instance for testing."""
-        return ApiClient(api_key="test-api-key")
-
-    @pytest.fixture
-    def mock_declaration_response(self):
-        """Create a mock API declaration response."""
-        return {
-            "id": 42,
-            "name": "List.map",
-            "module": "Init.Data.List.Basic",
-            "docstring": "Maps a function over a list",
-            "source_text": "def map (f : a -> b) (xs : List a) : List b := ...",
-            "source_link": "https://github.com/example#L200",
-            "dependencies": '["List"]',
-            "informalization": "Applies a function to each element",
-        }
-
-    async def test_get_by_id_found(self, client, mock_declaration_response):
-        """Test successful retrieval of a declaration by ID."""
-        mock_response = MagicMock()
-        mock_response.status_code = 200
-        mock_response.json.return_value = mock_declaration_response
-        mock_response.raise_for_status = MagicMock()
-
-        with patch("httpx.AsyncClient") as mock_client_class:
-            mock_async_client = AsyncMock()
-            mock_async_client.get = AsyncMock(return_value=mock_response)
-            mock_async_client.__aenter__ = AsyncMock(return_value=mock_async_client)
-            mock_async_client.__aexit__ = AsyncMock(return_value=None)
-            mock_client_class.return_value = mock_async_client
-
-            result = await client.get_by_id(declaration_id=42)
-
-            assert isinstance(result, SearchResult)
-            assert result.id == 42
-            assert result.name == "List.map"
-
-    async def test_get_by_id_not_found(self, client):
-        """Test retrieval of non-existent declaration returns None."""
-        mock_response = MagicMock()
-        mock_response.status_code = 404
-
-        with patch("httpx.AsyncClient") as mock_client_class:
-            mock_async_client = AsyncMock()
-            mock_async_client.get = AsyncMock(return_value=mock_response)
-            mock_async_client.__aenter__ = AsyncMock(return_value=mock_async_client)
-            mock_async_client.__aexit__ = AsyncMock(return_value=None)
-            mock_client_class.return_value = mock_async_client
-
-            result = await client.get_by_id(declaration_id=99999)
-
-            assert result is None
-
-    async def test_get_by_id_http_error(self, client):
-        """Test that HTTP errors (non-404) are propagated."""
-        mock_response = MagicMock()
-        mock_response.status_code = 500
-        mock_response.raise_for_status.side_effect = httpx.HTTPStatusError(
-            "Server Error",
-            request=MagicMock(),
-            response=MagicMock(status_code=500),
+    async def test_get_by_id_found(self, api):
+        """A 200 response is parsed into a SearchResult."""
+        api["handler"] = lambda request: httpx.Response(
+            200, json=declaration(42, "List.map")
         )
+        result = await ApiClient().get_by_id(42)
 
-        with patch("httpx.AsyncClient") as mock_client_class:
-            mock_async_client = AsyncMock()
-            mock_async_client.get = AsyncMock(return_value=mock_response)
-            mock_async_client.__aenter__ = AsyncMock(return_value=mock_async_client)
-            mock_async_client.__aexit__ = AsyncMock(return_value=None)
-            mock_client_class.return_value = mock_async_client
+        assert isinstance(result, SearchResult)
+        assert (result.id, result.name) == (42, "List.map")
+        request = api["requests"][0]
+        assert str(request.url) == f"{Config.API_BASE_URL}/declarations/42"
+        assert "authorization" not in request.headers
 
-            with pytest.raises(httpx.HTTPStatusError):
-                await client.get_by_id(declaration_id=42)
+    async def test_get_by_id_not_found(self, api):
+        """A 404 returns None rather than raising."""
+        api["handler"] = lambda request: httpx.Response(404)
+        assert await ApiClient().get_by_id(99999) is None
 
-    async def test_get_by_id_does_not_include_auth_header(self, client):
-        """Test that get_by_id does not send a legacy API key."""
-        mock_response = MagicMock()
-        mock_response.status_code = 404
-
-        with patch("httpx.AsyncClient") as mock_client_class:
-            mock_async_client = AsyncMock()
-            mock_async_client.get = AsyncMock(return_value=mock_response)
-            mock_async_client.__aenter__ = AsyncMock(return_value=mock_async_client)
-            mock_async_client.__aexit__ = AsyncMock(return_value=None)
-            mock_client_class.return_value = mock_async_client
-
-            await client.get_by_id(declaration_id=1)
-
-            call_args = mock_async_client.get.call_args
-            assert call_args.kwargs["headers"] == {}
-
-    async def test_get_by_id_correct_endpoint(self, client):
-        """Test that get_by_id uses correct endpoint."""
-        mock_response = MagicMock()
-        mock_response.status_code = 404
-
-        with patch("httpx.AsyncClient") as mock_client_class:
-            mock_async_client = AsyncMock()
-            mock_async_client.get = AsyncMock(return_value=mock_response)
-            mock_async_client.__aenter__ = AsyncMock(return_value=mock_async_client)
-            mock_async_client.__aexit__ = AsyncMock(return_value=None)
-            mock_client_class.return_value = mock_async_client
-
-            await client.get_by_id(declaration_id=123)
-
-            call_args = mock_async_client.get.call_args
-            endpoint = call_args.args[0]
-            assert "/declarations/123" in endpoint
+    async def test_get_by_id_http_error(self, api):
+        """Other error statuses propagate."""
+        api["handler"] = lambda request: httpx.Response(503)
+        with pytest.raises(httpx.HTTPStatusError):
+            await ApiClient().get_by_id(42)
