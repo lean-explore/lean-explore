@@ -131,9 +131,9 @@ def resolve_extraction_path(create_new: bool) -> Path:
         click.ClickException: If reusing and no extraction exists yet.
     """
     if create_new:
-        extraction_path = Config.create_timestamped_extraction_path()
-        logger.info("Created new extraction directory: %s", extraction_path)
-        return extraction_path
+        new_path = Config.create_timestamped_extraction_path()
+        logger.info("Created new extraction directory: %s", new_path)
+        return new_path
 
     extraction_path = Config.get_latest_extraction_path()
     if extraction_path is None:

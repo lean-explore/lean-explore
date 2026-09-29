@@ -8,7 +8,7 @@ first (keyed by informalization text); only the misses are generated.
 import logging
 import sqlite3
 import struct
-from collections.abc import Iterator
+from collections.abc import Iterator, Sequence
 from contextlib import closing
 from dataclasses import dataclass
 from pathlib import Path
@@ -167,7 +167,7 @@ async def _apply_cache_to_declarations(
 
 async def _process_batch(
     session: AsyncSession,
-    declarations: list[Declaration],
+    declarations: Sequence[Declaration],
     client: EmbeddingClient,
 ) -> int:
     """Process a batch of declarations and generate informalization embeddings.
