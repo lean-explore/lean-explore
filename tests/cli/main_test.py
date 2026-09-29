@@ -121,73 +121,31 @@ class TestSearchCommand:
 class TestMcpServeCommand:
     """Tests for the MCP serve command."""
 
-    def test_mcp_serve_without_api_key(self):
-        """Test MCP API backend starts without credentials."""
-        mock_result = MagicMock()
-        mock_result.returncode = 0
+    @pytest.mark.parametrize(
+        ("arguments", "backend", "log_level"),
+        [
+            ([], "api", "ERROR"),
+            (["--backend", "local"], "local", "ERROR"),
+            (["--backend", "LOCAL", "--log-level", "info"], "local", "INFO"),
+            (["-b", "api", "--api-key", "my-key"], "api", "ERROR"),
+        ],
+    )
+    def test_runs_server_with_options(
+        self, arguments: list[str], backend: str, log_level: str
+    ):
+        """Options are normalized and the legacy API key is ignored."""
+        with patch("lean_explore.mcp.server.run_server") as run_server:
+            result = runner.invoke(app, ["mcp", "serve", *arguments])
 
-        with patch("subprocess.run", return_value=mock_result) as mock_run:
-            result = runner.invoke(app, ["mcp", "serve", "--backend", "api"])
-            assert result.exit_code == 0
-            mock_run.assert_called_once()
+        assert result.exit_code == 0
+        run_server.assert_called_once_with(backend=backend, log_level=log_level)
 
-    def test_mcp_serve_ignores_api_key_env(self):
-        """Test MCP serve ignores the legacy API key environment variable."""
-        mock_result = MagicMock()
-        mock_result.returncode = 0
+    def test_propagates_server_exit_code(self):
+        """A server that exits with an error makes the command fail."""
+        with patch("lean_explore.mcp.server.run_server", side_effect=SystemExit(1)):
+            result = runner.invoke(app, ["mcp", "serve"])
 
-        with patch("subprocess.run", return_value=mock_result) as mock_run:
-            result = runner.invoke(app, ["mcp", "serve", "--backend", "api"])
-            assert result.exit_code == 0
-            mock_run.assert_called_once()
-
-    def test_mcp_serve_with_api_key_option(self):
-        """Test MCP serve accepts and ignores the legacy API key option."""
-        mock_result = MagicMock()
-        mock_result.returncode = 0
-
-        with patch("subprocess.run", return_value=mock_result) as mock_run:
-            result = runner.invoke(
-                app, ["mcp", "serve", "--backend", "api", "--api-key", "my-key"]
-            )
-            assert result.exit_code == 0
-            mock_run.assert_called_once()
-            call_args = mock_run.call_args[0][0]
-            assert "--api-key" not in call_args
-            assert "my-key" not in call_args
-
-    def test_mcp_serve_local_backend(self):
-        """Test MCP serve with local backend (no API key needed)."""
-        mock_result = MagicMock()
-        mock_result.returncode = 0
-
-        with patch("subprocess.run", return_value=mock_result) as mock_run:
-            result = runner.invoke(app, ["mcp", "serve", "--backend", "local"])
-            assert result.exit_code == 0
-            mock_run.assert_called_once()
-            call_args = mock_run.call_args[0][0]
-            assert "--backend" in call_args
-            assert "local" in call_args
-
-    def test_mcp_serve_subprocess_failure(self):
-        """Test MCP serve handles subprocess failures."""
-        mock_result = MagicMock()
-        mock_result.returncode = 1
-
-        with patch("subprocess.run", return_value=mock_result):
-            result = runner.invoke(app, ["mcp", "serve", "--backend", "api"])
-            assert result.exit_code == 1
-
-    def test_mcp_serve_backend_case_insensitive(self):
-        """Test that backend option is case insensitive."""
-        mock_result = MagicMock()
-        mock_result.returncode = 0
-
-        with patch("subprocess.run", return_value=mock_result) as mock_run:
-            result = runner.invoke(app, ["mcp", "serve", "--backend", "LOCAL"])
-            assert result.exit_code == 0
-            call_args = mock_run.call_args[0][0]
-            assert "local" in call_args
+        assert result.exit_code == 1
 
 
 class TestCliApp:
