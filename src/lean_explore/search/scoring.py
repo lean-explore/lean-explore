@@ -1,8 +1,7 @@
-"""Score normalization and fusion algorithms for search ranking.
+"""Score normalization and fuzzy matching for search ranking.
 
-This module provides utilities for combining multiple retrieval signals into
-a unified ranking using techniques like Reciprocal Rank Fusion (RRF) and
-weighted score fusion.
+This module provides score normalization and fuzzy name matching used when
+combining retrieval signals into a final ranking.
 """
 
 import difflib
@@ -56,86 +55,6 @@ def normalize_dependency_counts(counts: list[int]) -> list[float]:
 
     log_max = math.log(1 + max_count)
     return [math.log(1 + c) / log_max for c in counts]
-
-
-def compute_ranks(scores: list[float]) -> list[int]:
-    """Compute ranks for a list of scores (1-indexed, higher score = lower rank).
-
-    Candidates with score 0 get rank len(scores)+1 (worst possible).
-
-    Args:
-        scores: List of raw scores.
-
-    Returns:
-        List of ranks (1 = best).
-    """
-    n = len(scores)
-    indexed = [(i, s) for i, s in enumerate(scores)]
-    indexed.sort(key=lambda x: x[1], reverse=True)
-
-    ranks = [0] * n
-    for rank, (idx, score) in enumerate(indexed, 1):
-        if score > 0:
-            ranks[idx] = rank
-        else:
-            ranks[idx] = n + 1
-
-    return ranks
-
-
-def reciprocal_rank_fusion(rank_lists: list[list[int]], k: int = 0) -> list[float]:
-    """Compute RRF scores from multiple rank lists.
-
-    RRF(d) = sum(1 / (k + rank_i(d)) for each signal i)
-
-    Args:
-        rank_lists: List of rank lists, one per signal.
-        k: Constant to prevent top rank from dominating. Default 0 means 1/rank.
-
-    Returns:
-        List of RRF scores for each candidate.
-    """
-    n = len(rank_lists[0])
-    rrf_scores = []
-
-    for i in range(n):
-        score = sum(1.0 / (k + ranks[i]) for ranks in rank_lists)
-        rrf_scores.append(score)
-
-    return rrf_scores
-
-
-def weighted_score_fusion(
-    score_lists: list[list[float]],
-    weights: list[float],
-) -> list[float]:
-    """Combine multiple score lists using weighted normalized scores.
-
-    Each score list is normalized to [0, 1] using min-max scaling,
-    then combined with the given weights.
-
-    Args:
-        score_lists: List of score lists, one per signal.
-        weights: Weight for each signal (should sum to 1.0 for interpretability).
-
-    Returns:
-        List of combined scores for each candidate.
-    """
-    if not score_lists:
-        return []
-
-    n = len(score_lists[0])
-    if n == 0:
-        return []
-
-    normalized_lists = [normalize_scores(scores) for scores in score_lists]
-
-    combined = []
-    for i in range(n):
-        score = sum(w * normalized_lists[j][i] for j, w in enumerate(weights))
-        combined.append(score)
-
-    return combined
 
 
 def fuzzy_name_score(query: str, name: str) -> float:

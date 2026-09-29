@@ -4,8 +4,10 @@ This package provides hybrid search for Lean declarations using BM25 lexical
 matching and FAISS semantic search, combined via Reciprocal Rank Fusion.
 
 Modules:
-    engine: Core SearchEngine class with hybrid retrieval and cross-encoder reranking.
-    scoring: Score normalization and fusion algorithms (RRF, weighted fusion).
+    engine: SearchEngine, which orchestrates retrieval, ranking, and lookup.
+    indexes: Lazily loaded BM25 name indices and FAISS informalization index.
+    ranking: Rank fusion, dependency boost, and rerank score combination.
+    scoring: Score normalization and fuzzy name matching.
     service: Service layer wrapper for search operations.
     tokenization: Text tokenization utilities for Lean declaration names.
 
