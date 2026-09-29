@@ -12,7 +12,6 @@ PACKAGE_REGISTRY: dict[str, PackageConfig] = {
         module_prefixes=["Mathlib", "Batteries", "Init", "Lean", "Std"],
         version_strategy=VersionStrategy.LATEST,
         depends_on=[],
-        extract_core=True,
     ),
     "physlean": PackageConfig(
         name="physlean",

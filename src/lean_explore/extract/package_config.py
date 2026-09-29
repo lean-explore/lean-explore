@@ -6,7 +6,6 @@ for Lean packages to extract.
 
 from dataclasses import dataclass, field
 from enum import Enum
-from pathlib import Path
 
 
 class VersionStrategy(Enum):
@@ -35,23 +34,19 @@ class PackageConfig:
     version_strategy: VersionStrategy = VersionStrategy.TAGGED
     """Strategy for selecting the version to extract."""
 
-    lean_toolchain: str | None = None
-    """Override Lean toolchain version. If None, determined from package."""
-
     depends_on: list[str] = field(default_factory=list)
     """List of package names this package depends on (for extraction ordering)."""
-
-    extract_core: bool = False
-    """If True, also extract Init/Lean/Std modules from this package's toolchain."""
-
-    def workspace_path(self, base_path: Path) -> Path:
-        """Get the workspace path for this package."""
-        return base_path / self.name
 
     def should_include_module(self, module_name: str) -> bool:
         """Check if a module belongs to this package based on prefixes.
 
         Uses exact match or prefix + "." to avoid "Lean" matching "LeanSearchClient".
+
+        Args:
+            module_name: Fully qualified module name (e.g., 'Mathlib.Data.List').
+
+        Returns:
+            True if the module is one of this package's prefixes or below one.
         """
         return any(
             module_name == prefix or module_name.startswith(prefix + ".")
