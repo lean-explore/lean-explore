@@ -6,6 +6,8 @@ and other constants used throughout the application.
 
 import os
 import pathlib
+import re
+from datetime import datetime
 
 
 def _get_active_cache_version() -> str:
@@ -42,8 +44,6 @@ def _get_data_directory() -> pathlib.Path:
 
 def _get_timestamped_directories(data_directory: pathlib.Path) -> list[pathlib.Path]:
     """Get all timestamped extraction directories sorted by name descending."""
-    import re
-
     if not data_directory.exists():
         return []
 
@@ -127,9 +127,6 @@ class Config:
     Default: <repo-root>/data
     """
 
-    DEFAULT_LEAN_VERSION: str = "4.24.0"
-    """Lean version for database naming and dependency resolution."""
-
     ACTIVE_VERSION: str = _get_active_cache_version()
     """Active version identifier for cached data (e.g., "2025.01.27").
 
@@ -156,11 +153,6 @@ class Config:
     # =========================================================================
 
     @staticmethod
-    def _get_timestamped_directories() -> list[pathlib.Path]:
-        """Get all timestamped extraction directories sorted by name descending."""
-        return _get_timestamped_directories(Config.DATA_DIRECTORY)
-
-    @staticmethod
     def get_latest_extraction_path() -> pathlib.Path | None:
         """Get the most recent timestamped extraction directory.
 
@@ -169,51 +161,19 @@ class Config:
         Returns:
             Path to most recent extraction directory, or None if none exist.
         """
-        timestamped_directories = Config._get_timestamped_directories()
+        timestamped_directories = _get_timestamped_directories(Config.DATA_DIRECTORY)
         return timestamped_directories[0] if timestamped_directories else None
 
     DATABASE_PATH: pathlib.Path = ACTIVE_CACHE_PATH / "lean_explore.db"
     """Path to SQLite database file in cache (used by search engine)."""
 
-    FAISS_INDEX_PATH: pathlib.Path = ACTIVE_CACHE_PATH / "informalization_faiss.index"
-    """Path to FAISS index file in cache (using informalization embeddings)."""
-
-    FAISS_IDS_MAP_PATH: pathlib.Path = (
-        ACTIVE_CACHE_PATH / "informalization_faiss_ids_map.json"
-    )
-    """Path to FAISS ID mapping file in cache."""
-
-    BM25_SPACED_PATH: pathlib.Path = ACTIVE_CACHE_PATH / "bm25_name_spaced"
-    """Path to BM25 spaced tokenization index directory in cache."""
-
-    BM25_RAW_PATH: pathlib.Path = ACTIVE_CACHE_PATH / "bm25_name_raw"
-    """Path to BM25 raw tokenization index directory in cache."""
-
-    BM25_IDS_MAP_PATH: pathlib.Path = ACTIVE_CACHE_PATH / "bm25_ids_map.json"
-    """Path to BM25 ID mapping file in cache."""
-
     DATABASE_URL: str = f"sqlite+aiosqlite:///{DATABASE_PATH}"
     """Async SQLAlchemy database URL for SQLite (used by search engine)."""
 
-    EXTRACTION_DATABASE_PATH: pathlib.Path = ACTIVE_DATA_PATH / "lean_explore.db"
-    """Path to SQLite database file in data directory (used by extraction)."""
-
-    EXTRACTION_DATABASE_URL: str = f"sqlite+aiosqlite:///{EXTRACTION_DATABASE_PATH}"
+    EXTRACTION_DATABASE_URL: str = (
+        f"sqlite+aiosqlite:///{ACTIVE_DATA_PATH / 'lean_explore.db'}"
+    )
     """Async SQLAlchemy database URL for extraction pipeline."""
-
-    @staticmethod
-    def get_latest_database_path() -> pathlib.Path | None:
-        """Get the path to the most recent extraction database.
-
-        Returns:
-            Path to lean_explore.db in the most recent extraction, or None.
-        """
-        latest = Config.get_latest_extraction_path()
-        if latest:
-            database_path = latest / "lean_explore.db"
-            if database_path.exists():
-                return database_path
-        return None
 
     @staticmethod
     def create_timestamped_extraction_path() -> pathlib.Path:
@@ -222,8 +182,6 @@ class Config:
         Returns:
             Path to the newly created directory (YYYYMMDD_HHMMSS format).
         """
-        from datetime import datetime
-
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         extraction_path = Config.DATA_DIRECTORY / timestamp
         extraction_path.mkdir(parents=True, exist_ok=True)
@@ -244,21 +202,6 @@ class Config:
     Can be overridden with LEAN_EXPLORE_PACKAGES_ROOT environment variable.
     Default: <repo-root>/lean
     """
-
-    EXTRACT_PACKAGES: set[str] = {
-        "batteries",
-        "init",
-        "lean4",
-        "mathlib",
-        "physlean",
-        "std",
-    }
-    """Set of package names to extract from doc-gen4 output."""
-
-    MANIFEST_URL: str = (
-        "https://pub-48b75babc4664808b15520033423c765.r2.dev/manifest.json"
-    )
-    """Remote URL for the data toolchain manifest."""
 
     R2_ASSETS_BASE_URL: str = "https://pub-48b75babc4664808b15520033423c765.r2.dev"
     """Base URL for Cloudflare R2 asset storage."""
