@@ -1,398 +1,205 @@
 """Tests for embedding generation.
 
-These tests verify the generation of vector embeddings for declaration fields
-using sentence transformers.
+The pipeline tests run generate_embeddings against SQLite database files with a
+fake embedding client and check what ends up stored in the database.
 """
 
-from unittest.mock import AsyncMock, MagicMock, patch
+import struct
 
 import pytest
-from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
 
+from lean_explore.extract import embeddings
 from lean_explore.extract.embeddings import (
-    _get_declarations_needing_embeddings,
-    _process_batch,
+    _deserialize_embedding,
+    _load_embedding_caches,
     generate_embeddings,
 )
-from lean_explore.models import Declaration
+from tests.extract.builders import (
+    FakeEmbeddingClient,
+    create_database,
+    fake_vector,
+    load_by_name,
+    make_declaration,
+    write_database,
+)
+
+CACHED_VECTOR = [0.5, -0.25, 0.125, 2.0]
 
 
-class TestDeclarationQuerying:
-    """Tests for finding declarations needing embeddings."""
+@pytest.fixture
+def embedder(monkeypatch) -> FakeEmbeddingClient:
+    """Install a fake local embedding client and record its constructor args."""
+    client = FakeEmbeddingClient()
 
-    async def test_get_declarations_needing_embeddings_missing(self, async_db_session):
-        """Test getting declarations with no embeddings."""
-        declaration = Declaration(
-            name="Test",
-            module="Test",
-            source_text="def test := 1",
-            source_link="https://example.com",
-            informalization="Test declaration",
+    def create(**kwargs):
+        client.init_kwargs = kwargs
+        return client
+
+    monkeypatch.setattr(embeddings, "EmbeddingClient", create)
+    return client
+
+
+@pytest.fixture
+def no_embedder(monkeypatch):
+    """Fail the test if an embedding client is created."""
+
+    def fail(**kwargs):
+        raise AssertionError("EmbeddingClient should not be created")
+
+    monkeypatch.setattr(embeddings, "EmbeddingClient", fail)
+
+
+async def _embed(tmp_path, declarations, **kwargs) -> dict:
+    """Run generate_embeddings on a fresh database; return stored rows."""
+    engine = await create_database(tmp_path / "run" / "lean_explore.db", declarations)
+    await generate_embeddings(engine, model_name="test-model", **kwargs)
+    stored = await load_by_name(engine)
+    await engine.dispose()
+    return stored
+
+
+def _informalized(*names: str) -> list:
+    return [make_declaration(n, informalization=f"About {n}.") for n in names]
+
+
+class TestEmbeddingCacheLoading:
+    """Tests for loading embeddings from previous databases."""
+
+    def test_deserialize_embedding(self):
+        """Packed float32 bytes decode to floats."""
+        data = struct.pack("3f", 1.0, -2.5, 0.25)
+
+        assert _deserialize_embedding(data) == [1.0, -2.5, 0.25]
+
+    def test_first_database_wins_and_rows_without_embedding_are_ignored(self, tmp_path):
+        """The cache maps informalization text to the first stored embedding."""
+        first = write_database(
+            tmp_path / "a.db",
+            [
+                make_declaration("A", informalization="Text A.", embedding=[1.0]),
+                make_declaration("B", informalization="Text B."),
+            ],
         )
-        async_db_session.add(declaration)
-        await async_db_session.commit()
-
-        declarations = await _get_declarations_needing_embeddings(
-            async_db_session, limit=None
-        )
-
-        assert len(declarations) == 1
-        assert declarations[0].name == "Test"
-
-    async def test_get_declarations_needing_embeddings_complete(self, async_db_session):
-        """Test that declarations with embeddings are not returned."""
-        declaration = Declaration(
-            name="Test",
-            module="Test",
-            source_text="def test := 1",
-            source_link="https://example.com",
-            informalization="Test declaration",
-            informalization_embedding=[0.2] * 768,
-        )
-        async_db_session.add(declaration)
-        await async_db_session.commit()
-
-        declarations = await _get_declarations_needing_embeddings(
-            async_db_session, limit=None
-        )
-
-        # Should not return since embedding present
-        assert len(declarations) == 0
-
-    async def test_get_declarations_no_informalization_skipped(self, async_db_session):
-        """Test that declarations without informalization are not returned."""
-        declaration = Declaration(
-            name="Test",
-            module="Test",
-            source_text="def test := 1",
-            source_link="https://example.com",
-            informalization=None,  # No informalization
-        )
-        async_db_session.add(declaration)
-        await async_db_session.commit()
-
-        declarations = await _get_declarations_needing_embeddings(
-            async_db_session, limit=None
-        )
-
-        # Should not return since no informalization to embed
-        assert len(declarations) == 0
-
-    async def test_get_declarations_with_limit(self, async_db_session):
-        """Test querying with a limit."""
-        for i in range(10):
-            declaration = Declaration(
-                name=f"Test{i}",
-                module="Test",
-                source_text=f"def test{i} := {i}",
-                source_link=f"https://example.com/{i}",
-                informalization=f"Test declaration {i}",
-            )
-            async_db_session.add(declaration)
-        await async_db_session.commit()
-
-        declarations = await _get_declarations_needing_embeddings(
-            async_db_session, limit=5
+        second = write_database(
+            tmp_path / "b.db",
+            [make_declaration("A2", informalization="Text A.", embedding=[9.0])],
         )
 
-        assert len(declarations) == 5
+        caches = _load_embedding_caches([first, second])
+
+        assert list(caches.by_informalization) == ["Text A."]
+        assert _deserialize_embedding(caches.by_informalization["Text A."]) == [1.0]
+
+    def test_corrupt_database_is_skipped(self, tmp_path):
+        """Unreadable databases are skipped."""
+        corrupt = tmp_path / "corrupt.db"
+        corrupt.write_text("not a database")
+
+        assert _load_embedding_caches([corrupt]).by_informalization == {}
 
 
-class TestBatchProcessing:
-    """Tests for batch embedding generation."""
+class TestGenerateEmbeddings:
+    """Tests for the embedding pipeline."""
 
-    async def test_process_batch_generates_embedding(
-        self, async_db_session, mock_embedding_client
-    ):
-        """Test processing batch generates informalization embedding."""
-        declaration = Declaration(
-            name="Test",
-            module="Test",
-            source_text="def test := 1",
-            source_link="https://example.com",
-            informalization="Test informalization",
-        )
-        async_db_session.add(declaration)
-        await async_db_session.commit()
-
-        count = await _process_batch(
-            async_db_session,
-            [declaration],
-            mock_embedding_client,
+    async def test_embeds_in_batches(self, tmp_path, previous_runs, embedder):
+        """Informalizations are embedded batch_size at a time and stored."""
+        stored = await _embed(
+            tmp_path, _informalized("A", "B", "C"), batch_size=2, max_seq_length=64
         )
 
-        # Should generate embedding for informalization
-        assert count == 1
-
-        # Verify embedding was set
-        result = await async_db_session.execute(
-            select(Declaration).where(Declaration.name == "Test")
-        )
-        updated = result.scalar_one()
-
-        assert updated.informalization_embedding is not None
-
-    async def test_process_batch_skips_existing(
-        self, async_db_session, mock_embedding_client
-    ):
-        """Test processing batch skips declarations with existing embeddings."""
-        declaration = Declaration(
-            name="Test",
-            module="Test",
-            source_text="def test := 1",
-            source_link="https://example.com",
-            informalization="Test",
-            informalization_embedding=[0.1] * 768,  # Already exists
-        )
-        async_db_session.add(declaration)
-        await async_db_session.commit()
-
-        count = await _process_batch(
-            async_db_session,
-            [declaration],
-            mock_embedding_client,
-        )
-
-        # Should skip since embedding already exists
-        assert count == 0
-
-    async def test_process_batch_skips_no_informalization(
-        self, async_db_session, mock_embedding_client
-    ):
-        """Test processing declarations without informalization."""
-        declaration = Declaration(
-            name="Test",
-            module="Test",
-            source_text="def test := 1",
-            source_link="https://example.com",
-            informalization=None,
-        )
-        async_db_session.add(declaration)
-        await async_db_session.commit()
-
-        count = await _process_batch(
-            async_db_session,
-            [declaration],
-            mock_embedding_client,
-        )
-
-        # Should skip since no informalization to embed
-        assert count == 0
-
-    async def test_process_batch_multiple_declarations(
-        self, async_db_session, mock_embedding_client
-    ):
-        """Test processing multiple declarations in one batch."""
-        declarations = []
-        for i in range(3):
-            decl = Declaration(
-                name=f"Test{i}",
-                module="Test",
-                source_text=f"def test{i} := {i}",
-                source_link=f"https://example.com/{i}",
-                informalization=f"Test informalization {i}",
-            )
-            async_db_session.add(decl)
-            declarations.append(decl)
-        await async_db_session.commit()
-
-        count = await _process_batch(
-            async_db_session,
-            declarations,
-            mock_embedding_client,
-        )
-
-        # Each declaration has informalization: 3 embeddings
-        assert count == 3
-
-        # Verify all were updated
-        result = await async_db_session.execute(select(Declaration))
-        all_declarations = result.scalars().all()
-        for declaration in all_declarations:
-            assert declaration.informalization_embedding is not None
-
-    async def test_process_batch_empty(self, async_db_session, mock_embedding_client):
-        """Test processing empty batch."""
-        count = await _process_batch(async_db_session, [], mock_embedding_client)
-
-        assert count == 0
-
-
-class TestGenerateEmbeddingsE2E:
-    """End-to-end embedding generation tests."""
-
-    @pytest.mark.integration
-    @pytest.mark.slow
-    async def test_generate_embeddings_full_pipeline(self, async_db_engine):
-        """Test complete embedding generation pipeline."""
-        # Add declarations to database
-        async with AsyncSession(async_db_engine) as session:
-            declarations = [
-                Declaration(
-                    name="Nat",
-                    module="Init",
-                    source_text="inductive Nat | zero | succ",
-                    source_link="https://example.com/nat",
-                    informalization="Natural numbers",
-                ),
-                Declaration(
-                    name="Nat.add",
-                    module="Init",
-                    source_text="def add (n m : Nat) := n + m",
-                    source_link="https://example.com/add",
-                    informalization="Addition of natural numbers",
-                ),
-            ]
-            for declaration in declarations:
-                session.add(declaration)
-            await session.commit()
-
-        # Mock the EmbeddingClient
-        with patch(
-            "lean_explore.extract.embeddings.EmbeddingClient"
-        ) as mock_client_cls:
-            mock_client = MagicMock()
-            mock_client.model_name = "test-model"
-            mock_client.device = "cpu"
-
-            # Create mock response
-            mock_response = MagicMock()
-            mock_response.embeddings = [
-                [0.1] * 768 for _ in range(10)
-            ]  # Enough for all fields
-            mock_client.embed = AsyncMock(return_value=mock_response)
-
-            mock_client_cls.return_value = mock_client
-
-            await generate_embeddings(
-                async_db_engine,
-                model_name="test-model",
-                batch_size=10,
-                limit=None,
+        assert [len(batch) for batch in embedder.batches] == [2, 1]
+        assert embedder.init_kwargs == {"model_name": "test-model", "max_length": 64}
+        for name, declaration in stored.items():
+            assert declaration.informalization_embedding == pytest.approx(
+                fake_vector(f"About {name}.")
             )
 
-        # Verify embeddings were generated
-        async with AsyncSession(async_db_engine) as session:
-            result = await session.execute(select(Declaration))
-            all_declarations = result.scalars().all()
+    async def test_skips_declarations_without_informalization_or_with_embedding(
+        self, tmp_path, previous_runs, embedder
+    ):
+        """Only informalized declarations lacking an embedding are embedded."""
+        declarations = [
+            make_declaration("Raw"),
+            make_declaration("Done", informalization="Done.", embedding=[7.0]),
+            *_informalized("New"),
+        ]
 
-            assert len(all_declarations) == 2
-            for declaration in all_declarations:
-                # All should have informalization embeddings
-                assert declaration.informalization_embedding is not None
+        stored = await _embed(tmp_path, declarations)
 
-    @pytest.mark.integration
-    @pytest.mark.skip(
-        reason="SQLAlchemy async context issue with cache loading in test"
-    )
-    async def test_generate_embeddings_with_batching(self, async_db_engine):
-        """Test embedding generation with small batch size."""
-        async with AsyncSession(async_db_engine) as session:
-            # Create many declarations
-            for i in range(10):
-                declaration = Declaration(
-                    name=f"Declaration{i}",
-                    module="Test",
-                    source_text=f"def decl{i} := {i}",
-                    source_link=f"https://example.com/{i}",
+        assert embedder.batches == [["About New."]]
+        assert stored["Raw"].informalization_embedding is None
+        assert stored["Done"].informalization_embedding == [7.0]
+
+    async def test_reuses_embeddings_by_informalization_text(
+        self, tmp_path, previous_runs, embedder
+    ):
+        """Embeddings of identical text in previous runs are copied, not recomputed."""
+        data_directory, _ = previous_runs
+        write_database(
+            data_directory / "lean_explore.db",
+            [
+                make_declaration(
+                    "Old", informalization="About A.", embedding=CACHED_VECTOR
                 )
-                session.add(declaration)
-            await session.commit()
+            ],
+        )
 
-        with patch(
-            "lean_explore.extract.embeddings.EmbeddingClient"
-        ) as mock_client_cls:
-            mock_client = MagicMock()
-            mock_client.model_name = "test-model"
-            mock_client.device = "cpu"
+        stored = await _embed(tmp_path, _informalized("A", "B"))
 
-            # Create mock response with enough embeddings
-            mock_response = MagicMock()
-            mock_response.embeddings = [[0.1] * 768 for _ in range(100)]
-            mock_client.embed = AsyncMock(return_value=mock_response)
+        assert embedder.batches == [["About B."]]
+        assert stored["A"].informalization_embedding == pytest.approx(CACHED_VECTOR)
 
-            mock_client_cls.return_value = mock_client
+    async def test_all_cached_creates_no_client(
+        self, tmp_path, previous_runs, no_embedder
+    ):
+        """When every embedding is cached, no model is loaded."""
+        data_directory, _ = previous_runs
+        write_database(
+            data_directory / "lean_explore.db",
+            [make_declaration("A", informalization="About A.", embedding=[1.0])],
+        )
 
-            # Use small batch size to test batching
-            await generate_embeddings(
-                async_db_engine,
-                model_name="test-model",
-                batch_size=3,
-                limit=None,
-            )
+        stored = await _embed(tmp_path, _informalized("A"))
 
-        # Verify all were processed
-        async with AsyncSession(async_db_engine) as session:
-            result = await session.execute(select(Declaration))
-            all_declarations = result.scalars().all()
+        assert stored["A"].informalization_embedding == [1.0]
 
-            assert len(all_declarations) == 10
-            for declaration in all_declarations:
-                assert declaration.informalization_embedding is not None
+    async def test_nothing_to_do(self, tmp_path, previous_runs, no_embedder):
+        """A database without pending declarations is left alone."""
+        stored = await _embed(tmp_path, [make_declaration("Raw")])
 
-    @pytest.mark.integration
-    async def test_generate_embeddings_with_limit(self, async_db_engine):
-        """Test embedding generation with a limit."""
-        async with AsyncSession(async_db_engine) as session:
-            for i in range(10):
-                declaration = Declaration(
-                    name=f"Declaration{i}",
-                    module="Test",
-                    source_text=f"def decl{i} := {i}",
-                    source_link=f"https://example.com/{i}",
-                    informalization=f"Declaration number {i}",
-                )
-                session.add(declaration)
-            await session.commit()
+        assert stored["Raw"].informalization_embedding is None
 
-        with patch(
-            "lean_explore.extract.embeddings.EmbeddingClient"
-        ) as mock_client_cls:
-            mock_client = MagicMock()
-            mock_client.model_name = "test-model"
-            mock_client.device = "cpu"
+    async def test_limit_caps_declarations_embedded(
+        self, tmp_path, previous_runs, embedder
+    ):
+        """Only `limit` declarations are embedded."""
+        stored = await _embed(tmp_path, _informalized("A", "B", "C"), limit=2)
 
-            mock_response = MagicMock()
-            mock_response.embeddings = [[0.1] * 768 for _ in range(20)]
-            mock_client.embed = AsyncMock(return_value=mock_response)
+        embedded = [d for d in stored.values() if d.informalization_embedding]
+        assert len(embedded) == 2
 
-            mock_client_cls.return_value = mock_client
+    async def test_embedding_server_url_uses_remote_client(
+        self, tmp_path, previous_runs, no_embedder, monkeypatch
+    ):
+        """With a server URL, embeddings are delegated to RemoteEmbeddingClient."""
+        from lean_explore.util import remote_embedding_client
 
-            # Only process 5 declarations
-            await generate_embeddings(
-                async_db_engine,
-                model_name="test-model",
-                batch_size=10,
-                limit=5,
-            )
+        client = FakeEmbeddingClient()
+        server_urls = []
 
-        # Verify only 5 were processed
-        async with AsyncSession(async_db_engine) as session:
-            result = await session.execute(
-                select(Declaration).where(
-                    Declaration.informalization_embedding.isnot(None)
-                )
-            )
-            declarations_with_embeddings = result.scalars().all()
+        def create_remote(server_url):
+            server_urls.append(server_url)
+            return client
 
-            assert len(declarations_with_embeddings) == 5
+        monkeypatch.setattr(
+            remote_embedding_client, "RemoteEmbeddingClient", create_remote
+        )
 
-    @pytest.mark.integration
-    async def test_generate_embeddings_empty_database(self, async_db_engine):
-        """Test embedding generation with no declarations."""
-        with patch(
-            "lean_explore.extract.embeddings.EmbeddingClient"
-        ) as mock_client_cls:
-            mock_client = MagicMock()
-            mock_client.model_name = "test-model"
-            mock_client.device = "cpu"
-            mock_client_cls.return_value = mock_client
+        stored = await _embed(
+            tmp_path, _informalized("A"), embedding_server_url="http://gpu:8001"
+        )
 
-            # Should complete without errors
-            await generate_embeddings(
-                async_db_engine,
-                model_name="test-model",
-                batch_size=10,
-                limit=None,
-            )
+        assert server_urls == ["http://gpu:8001"]
+        assert stored["A"].informalization_embedding == pytest.approx(
+            fake_vector("About A.")
+        )

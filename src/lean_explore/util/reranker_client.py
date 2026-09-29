@@ -8,6 +8,8 @@ import torch
 from pydantic import BaseModel
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
+from lean_explore.util.device import select_device
+
 logger = logging.getLogger(__name__)
 
 DEFAULT_INSTRUCTION = "Find relevant Lean 4 math declarations"
@@ -26,6 +28,27 @@ class RerankerResponse(BaseModel):
 
     model: str
     """Model name used for reranking."""
+
+
+def _resolve_batch_size(batch_size: int | None, device: str) -> int:
+    """Resolve the default rerank batch size.
+
+    Args:
+        batch_size: Explicit batch size, used when not None.
+        device: Device the model runs on; picks the fallback default.
+
+    Returns:
+        The explicit value, else LEAN_EXPLORE_RERANKER_BATCH_SIZE when set,
+        else the device-specific default.
+    """
+    if batch_size is not None:
+        return batch_size
+    env_batch_size = os.getenv("LEAN_EXPLORE_RERANKER_BATCH_SIZE")
+    if env_batch_size:
+        return int(env_batch_size)
+    if device == "cuda":
+        return DEFAULT_CUDA_BATCH_SIZE
+    return DEFAULT_CPU_BATCH_SIZE
 
 
 class RerankerClient:
@@ -56,15 +79,7 @@ class RerankerClient:
         self.max_length = max_length
         self.instruction = instruction
 
-        env_batch_size = os.getenv("LEAN_EXPLORE_RERANKER_BATCH_SIZE")
-        if batch_size is not None:
-            self.batch_size = batch_size
-        elif env_batch_size:
-            self.batch_size = int(env_batch_size)
-        elif self.device == "cuda":
-            self.batch_size = DEFAULT_CUDA_BATCH_SIZE
-        else:
-            self.batch_size = DEFAULT_CPU_BATCH_SIZE
+        self.batch_size = _resolve_batch_size(batch_size, self.device)
 
         logger.info("Loading reranker model %s on %s", model_name, self.device)
 
@@ -76,9 +91,11 @@ class RerankerClient:
         # Use float16 on GPU for memory efficiency
         dtype = torch.float16 if self.device == "cuda" else torch.float32
 
+        # transformers 5 types PreTrainedModel.to() through a decorator that
+        # mypy misreads as taking a model argument; the call itself is correct.
         self.model = AutoModelForCausalLM.from_pretrained(
             model_name, torch_dtype=dtype, trust_remote_code=True
-        ).to(self.device)
+        ).to(self.device)  # type: ignore[arg-type]
         self.model.eval()
 
         # Get token IDs for true/false classification
@@ -88,10 +105,8 @@ class RerankerClient:
         logger.info("Reranker model loaded successfully")
 
     def _select_device(self) -> str:
-        """Select best available device."""
-        if torch.cuda.is_available():
-            return "cuda"
-        return "cpu"
+        """Select best available device (CUDA, then CPU; MPS is not used)."""
+        return select_device(allow_mps=False)
 
     def _format_pair(self, query: str, document: str) -> str:
         """Format a query-document pair with instruction.
@@ -191,7 +206,7 @@ class RerankerClient:
         pairs = [self._format_pair(query, doc) for doc in documents]
 
         # Process in batches
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         all_scores: list[float] = []
 
         for i in range(0, len(pairs), batch_size):

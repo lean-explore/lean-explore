@@ -1,13 +1,11 @@
 """Command-Line Interface for Lean Explore.
 
 Provides commands to search for Lean declarations via the remote API,
-interact with AI agents, and manage local data.
+run the MCP server, and manage local data.
 """
 
 import asyncio
 import logging
-import subprocess
-import sys
 
 import httpx
 import typer
@@ -102,24 +100,18 @@ def mcp_serve_command(
         "--api-key",
         help="Deprecated compatibility option. Its value is ignored.",
     ),
+    log_level: str = typer.Option(
+        "ERROR",
+        "--log-level",
+        help="Logging level for stderr output (DEBUG, INFO, WARNING, ERROR).",
+        case_sensitive=False,
+    ),
 ):
     """Launch the Lean Explore MCP (Model Context Protocol) server."""
     del api_key_override
+    from lean_explore.mcp.server import run_server
 
-    command_parts = [
-        sys.executable,
-        "-m",
-        "lean_explore.mcp.server",
-        "--backend",
-        backend.lower(),
-    ]
-
-    logger.info("Starting MCP server with backend: %s", backend.lower())
-    result = subprocess.run(command_parts, check=False)
-
-    if result.returncode != 0:
-        logger.error("MCP server exited with code %d", result.returncode)
-        raise typer.Exit(code=result.returncode)
+    run_server(backend=backend.lower(), log_level=log_level.upper())
 
 
 if __name__ == "__main__":

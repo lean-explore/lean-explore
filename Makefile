@@ -1,4 +1,4 @@
-.PHONY: help install lint format test test-fast test-integration test-external test-all clean
+.PHONY: help install lint format typecheck check-sizes test test-fast test-integration test-external test-all clean
 
 help:
 	@echo "LeanExplore Development Commands"
@@ -6,6 +6,8 @@ help:
 	@echo "make install          Install package in editable mode with dev dependencies"
 	@echo "make lint             Run ruff linter"
 	@echo "make format           Run ruff formatter"
+	@echo "make typecheck        Run mypy on the package"
+	@echo "make check-sizes      Report files > 500 lines and functions > 40 code lines"
 	@echo "make test             Run tests with coverage (excludes slow, integration, external)"
 	@echo "make test-fast        Run only fast tests (excludes slow, integration, external)"
 	@echo "make test-integration Run only integration tests"
@@ -24,6 +26,12 @@ lint:
 
 format:
 	ruff format .
+
+typecheck:
+	mypy src --ignore-missing-imports
+
+check-sizes:
+	python scripts/check_sizes.py
 
 test:
 	pytest --cov=lean_explore --cov-report=term-missing --cov-report=html -v \

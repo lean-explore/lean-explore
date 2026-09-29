@@ -4,9 +4,10 @@ import asyncio
 import logging
 import os
 
-import torch
 from pydantic import BaseModel
 from sentence_transformers import SentenceTransformer
+
+from lean_explore.util.device import select_device
 
 logger = logging.getLogger(__name__)
 
@@ -63,12 +64,8 @@ class EmbeddingClient:
             logger.info("Set max sequence length to %d", max_length)
 
     def _select_device(self) -> str:
-        """Select best available device."""
-        if torch.cuda.is_available():
-            return "cuda"
-        if torch.backends.mps.is_available():
-            return "mps"
-        return "cpu"
+        """Select best available device (CUDA, then MPS, then CPU)."""
+        return select_device(allow_mps=True)
 
     async def embed(
         self, texts: list[str], is_query: bool = False
@@ -85,7 +82,7 @@ class EmbeddingClient:
         Returns:
             EmbeddingResponse with texts, embeddings, and model info
         """
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
 
         def _encode():
             # Use query prompt for search queries, no prompt for documents

@@ -159,7 +159,7 @@ extraction directory automatically.
 
 ## Packages extracted
 
-The registry lives in `src/lean_explore/extract/package_registry.py`:
+The registry lives in `src/lean_explore/extract/packages/registry.py`:
 
 - `mathlib`: also supplies `Batteries`, `Init`, `Lean`, `Std` from its
   transitive dependencies.

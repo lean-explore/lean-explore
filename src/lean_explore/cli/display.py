@@ -5,7 +5,7 @@ import textwrap
 from rich.console import Console
 from rich.panel import Panel
 
-from lean_explore.models import SearchResponse
+from lean_explore.models import SearchResponse, SearchResult
 
 
 def _wrap_line(line: str, width: int) -> list[str]:
@@ -71,6 +71,51 @@ def _format_text_for_panel(text_content: str | None, width: int = 80) -> str:
     return "\n".join(output_lines) if output_lines else empty_line
 
 
+def _print_text_panel(
+    console: Console, text: str | None, title: str, color: str
+) -> None:
+    """Print text in a fixed-width titled panel, skipping empty text.
+
+    Args:
+        console: The Rich console to print to.
+        text: The panel contents. Nothing is printed when empty.
+        title: The panel title.
+        color: Rich color used for the title and border.
+    """
+    if not text:
+        return
+    console.print(
+        Panel(
+            _format_text_for_panel(text),
+            title=f"[bold {color}]{title}[/bold {color}]",
+            border_style=color,
+            expand=False,
+            padding=(0, 1),
+        )
+    )
+
+
+def _print_result(console: Console, position: int, item: SearchResult) -> None:
+    """Print one search result with its metadata and text panels.
+
+    Args:
+        console: The Rich console to print to.
+        position: One-based position of the result in the list.
+        item: The search result to print.
+    """
+    console.rule(f"[bold]Result {position}[/bold]", style="dim")
+    console.print(f"[bold cyan]ID:[/bold cyan] [dim]{item.id}[/dim]")
+    console.print(f"[bold cyan]Name:[/bold cyan] {item.name}")
+    console.print(f"[bold cyan]Module:[/bold cyan] [green]{item.module}[/green]")
+    console.print(
+        f"[bold cyan]Source:[/bold cyan] "
+        f"[link={item.source_link}]{item.source_link}[/link]"
+    )
+    _print_text_panel(console, item.source_text, "Code", "green")
+    _print_text_panel(console, item.docstring, "Docstring", "blue")
+    _print_text_panel(console, item.informalization, "Informalization", "magenta")
+
+
 def display_search_results(
     response: SearchResponse,
     display_limit: int = 5,
@@ -94,76 +139,27 @@ def display_search_results(
         )
     )
 
-    num_results_to_show = min(len(response.results), display_limit)
+    shown_results = response.results[:display_limit]
     time_info = (
         f"Time: {response.processing_time_ms}ms" if response.processing_time_ms else ""
     )
     console.print(
-        f"Showing {num_results_to_show} of {response.count} results. {time_info}"
+        f"Showing {len(shown_results)} of {response.count} results. {time_info}"
     )
 
-    if not response.results:
+    if not shown_results:
         console.print("[yellow]No results found.[/yellow]")
         return
 
     console.print("")
-
-    for i, item in enumerate(response.results):
-        if i >= display_limit:
-            break
-
-        console.rule(f"[bold]Result {i + 1}[/bold]", style="dim")
-        console.print(f"[bold cyan]ID:[/bold cyan] [dim]{item.id}[/dim]")
-        console.print(f"[bold cyan]Name:[/bold cyan] {item.name}")
-        console.print(f"[bold cyan]Module:[/bold cyan] [green]{item.module}[/green]")
-        source_formatted = (
-            f"[bold cyan]Source:[/bold cyan] "
-            f"[link={item.source_link}]{item.source_link}[/link]"
-        )
-        console.print(source_formatted)
-
-        if item.source_text:
-            formatted_code = _format_text_for_panel(item.source_text)
-            console.print(
-                Panel(
-                    formatted_code,
-                    title="[bold green]Code[/bold green]",
-                    border_style="green",
-                    expand=False,
-                    padding=(0, 1),
-                )
-            )
-
-        if item.docstring:
-            formatted_doc = _format_text_for_panel(item.docstring)
-            console.print(
-                Panel(
-                    formatted_doc,
-                    title="[bold blue]Docstring[/bold blue]",
-                    border_style="blue",
-                    expand=False,
-                    padding=(0, 1),
-                )
-            )
-
-        if item.informalization:
-            formatted_informal = _format_text_for_panel(item.informalization)
-            console.print(
-                Panel(
-                    formatted_informal,
-                    title="[bold magenta]Informalization[/bold magenta]",
-                    border_style="magenta",
-                    expand=False,
-                    padding=(0, 1),
-                )
-            )
-
-        if i < num_results_to_show - 1:
+    for position, item in enumerate(shown_results, start=1):
+        _print_result(console, position, item)
+        if position < len(shown_results):
             console.print("")
 
     console.rule(style="dim")
-    if len(response.results) > num_results_to_show:
+    hidden_count = len(response.results) - len(shown_results)
+    if hidden_count > 0:
         console.print(
-            f"...and {len(response.results) - num_results_to_show} more results "
-            "received but not shown due to limit."
+            f"...and {hidden_count} more results received but not shown due to limit."
         )

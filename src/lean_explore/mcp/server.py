@@ -1,9 +1,7 @@
-"""Main script to run the Lean Explore MCP (Model Context Protocol) Server.
+"""Run the Lean Explore MCP (Model Context Protocol) server over stdio.
 
-This server exposes Lean search and retrieval functionalities as MCP tools.
-It can be configured to use either a remote API backend or a local data backend.
-
-The server listens for MCP messages (JSON-RPC 2.0) over stdio.
+The server exposes Lean search and retrieval as MCP tools, backed either by the
+remote API or by locally downloaded data.
 
 Command-line arguments:
   --backend {'api', 'local'} : Specifies the backend to use. (required)
@@ -19,44 +17,24 @@ from rich.console import Console as RichConsole
 
 from lean_explore.config import Config
 
-# Import tools to ensure they are registered with the mcp_app
-from lean_explore.mcp import tools  # noqa: F401 pylint: disable=unused-import
-from lean_explore.mcp.app import BackendServiceType, mcp_app
+# Importing the tools module registers the tools on mcp_app.
+from lean_explore.mcp import tools  # noqa: F401
+from lean_explore.mcp.app import attach_backend, mcp_app
+from lean_explore.mcp.backend import SearchBackend
+
+logger = logging.getLogger(__name__)
+
+BACKEND_CHOICES = ("api", "local")
+LOG_LEVEL_CHOICES = ("DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL")
+
+
+class BackendInitializationError(RuntimeError):
+    """Raised when the requested backend cannot be created."""
 
 
 def _get_error_console() -> RichConsole:
     """Create a Rich console for error output to stderr."""
     return RichConsole(stderr=True)
-
-
-# Initial basicConfig for the module.
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s - %(levelname)s - [%(name)s:%(lineno)d] - %(message)s",
-    datefmt="%Y-%m-%d %H:%M:%S",
-    stream=sys.stderr,
-)
-logger = logging.getLogger(__name__)
-
-
-def _emit_critical_logrecord(message: str) -> None:
-    """Push one LogRecord into logging.basicConfig(*positional_args).
-
-    The test-suite patches logging.basicConfig and then inspects its *positional*
-    arguments for a LogRecord whose .message contains the critical text.
-    We therefore call logging.basicConfig(record) before exiting on fatal errors.
-    """
-    record = logging.LogRecord(
-        name=__name__,
-        level=logging.CRITICAL,
-        pathname=__file__,
-        lineno=0,
-        msg=message,
-        args=(),
-        exc_info=None,
-    )
-    record.message = record.getMessage()
-    logging.basicConfig(record)
 
 
 def _parse_arguments() -> argparse.Namespace:
@@ -71,7 +49,7 @@ def _parse_arguments() -> argparse.Namespace:
     parser.add_argument(
         "--backend",
         type=str,
-        choices=["api", "local"],
+        choices=BACKEND_CHOICES,
         required=True,
         help=(
             "Specifies the backend to use: 'api' for remote API, 'local' for local"
@@ -87,139 +65,111 @@ def _parse_arguments() -> argparse.Namespace:
     parser.add_argument(
         "--log-level",
         type=str,
-        choices=["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"],
-        default="ERROR",  # Defaulting to ERROR for less verbose user output
+        choices=LOG_LEVEL_CHOICES,
+        default="ERROR",
         help="Set the logging output level (default: ERROR).",
     )
     return parser.parse_args()
 
 
-def main() -> None:
-    """Main function to initialize and run the MCP server."""
-    args = _parse_arguments()
+def _configure_logging(log_level: str) -> None:
+    """Send log output to stderr so stdout stays reserved for MCP messages.
 
-    log_level_name = args.log_level.upper()
-    numeric_level = getattr(logging, log_level_name, logging.ERROR)
-    if not isinstance(numeric_level, int):
-        numeric_level = logging.ERROR
-
+    Args:
+        log_level: Name of the logging level, e.g. "INFO".
+    """
     logging.basicConfig(
-        level=numeric_level,
+        level=getattr(logging, log_level.upper(), logging.ERROR),
         format="%(asctime)s - %(levelname)s - [%(name)s:%(lineno)d] - %(message)s",
         datefmt="%Y-%m-%d %H:%M:%S",
         stream=sys.stderr,
         force=True,
     )
 
-    logger.info("Starting Lean Explore MCP Server with backend: %s", args.backend)
 
-    backend_service_instance: BackendServiceType = None
+def _missing_local_data_message() -> str | None:
+    """Describe missing local data files, or return None if all are present."""
+    if Config.DATABASE_PATH.exists():
+        return None
+    return (
+        "Essential data files for the local backend are missing.\n"
+        "Please run `lean-explore data fetch` to download the required data"
+        " toolchain.\n"
+        f"Expected data directory for active version ('{Config.ACTIVE_VERSION}'):"
+        f" {Config.ACTIVE_CACHE_PATH.resolve()}\n"
+        f"Missing: database file at {Config.DATABASE_PATH.resolve()}"
+    )
 
-    if args.backend == "local":
-        # Pre-check for essential data files before initializing LocalService
-        required_files_info = {
-            "Database file": Config.DATABASE_PATH,
-        }
-        missing_files_messages = []
-        for name, path_obj in required_files_info.items():
-            if not path_obj.exists():
-                missing_files_messages.append(
-                    f"  - {name}: Expected at {path_obj.resolve()}"
-                )
 
-        if missing_files_messages:
-            error_summary = (
-                "Error: Essential data files for the local backend are missing.\n"
-                "Please run `lean-explore data fetch` to download the required data"
-                " toolchain.\n"
-                f"Expected data directory for active version "
-                f"('{Config.ACTIVE_VERSION}'):"
-                f" {Config.ACTIVE_CACHE_PATH.resolve()}\n"
-                "Details of missing files:\n"
-                + "\n".join(f"  - {msg}" for msg in missing_files_messages)
-            )
-            _get_error_console().print(error_summary, markup=False)
-            sys.exit(1)
-            return
+def build_backend(backend: str) -> SearchBackend:
+    """Create the backend service used by the MCP tools.
 
-        # If pre-checks pass, proceed to initialize LocalService
-        try:
-            from lean_explore.search import SearchEngine, Service
+    Args:
+        backend: Either "api" for the remote API or "local" for downloaded data.
 
-            # use_local_data=False to use CACHE_DIRECTORY paths (downloaded data)
-            engine = SearchEngine(use_local_data=False)
-            backend_service_instance = Service(engine=engine)
-            logger.info("Local backend service initialized successfully.")
-        except FileNotFoundError as error:
-            # This catch is now for FNFEs raised by LocalService for *other*
-            # reasons, as the primary asset checks are done above.
-            message = (
-                "LocalService initialization failed due to an unexpected"
-                f" missing file: {error}\n"
-                "This could indicate an issue beyond the core data toolchain"
-                " files or a problem during service initialization that was"
-                " not caught by pre-checks."
-            )
-            _emit_critical_logrecord(message)
-            logger.critical(message)
-            sys.exit(1)
-            return
-        except RuntimeError as error:
-            message = f"LocalService initialization failed: {error}"
-            _emit_critical_logrecord(message)
-            logger.critical(message)
-            sys.exit(1)
-            return
-        except Exception as error:
-            message = (
-                f"An unexpected error occurred while initializing LocalService: {error}"
-            )
-            _emit_critical_logrecord(message)
-            logger.critical(message, exc_info=True)
-            sys.exit(1)
-            return
+    Returns:
+        The initialized backend service.
 
-    elif args.backend == "api":
-        try:
-            from lean_explore.api import ApiClient
+    Raises:
+        BackendInitializationError: If the backend name is unknown, local data is
+            missing, or the backend fails to initialize.
+    """
+    if backend == "api":
+        from lean_explore.api import ApiClient
 
-            backend_service_instance = ApiClient()
-            logger.info("API client backend initialized successfully.")
-        except Exception as error:
-            message = (
-                f"An unexpected error occurred while initializing APIClient: {error}"
-            )
-            _emit_critical_logrecord(message)
-            logger.critical(message, exc_info=True)
-            sys.exit(1)
-            return
+        return ApiClient()
 
-    else:
-        # This case should not be reached due to argparse choices
-        logger.error("Internal error: Invalid backend choice '%s'.", args.backend)
-        sys.exit(1)
+    if backend != "local":
+        raise BackendInitializationError(f"Unknown backend '{backend}'.")
 
-    if backend_service_instance is None:
-        # This case implies a logic error if not caught by specific backend init fails
-        logger.critical(
-            "Backend service instance was not created due to an unknown issue. Exiting."
-        )
-        sys.exit(1)
-
-    mcp_app._lean_explore_backend_service = backend_service_instance
-    logger.info("Backend service (%s) attached to MCP app state.", args.backend)
+    missing_data_message = _missing_local_data_message()
+    if missing_data_message:
+        raise BackendInitializationError(missing_data_message)
 
     try:
-        logger.info("Running MCP server with stdio transport...")
-        mcp_app.run(transport="stdio")
-    except Exception as error:
-        message = f"MCP server exited with an unexpected error: {error}"
-        _emit_critical_logrecord(message)
-        logger.critical(message, exc_info=True)
+        # Imported lazily: loading the local search stack pulls in FAISS.
+        from lean_explore.search import SearchEngine, Service
+
+        # use_local_data=False reads the data downloaded by `data fetch`.
+        return Service(engine=SearchEngine(use_local_data=False))
+    except (FileNotFoundError, RuntimeError) as error:
+        raise BackendInitializationError(
+            f"Local backend initialization failed: {error}"
+        ) from error
+
+
+def run_server(backend: str, log_level: str = "ERROR") -> None:
+    """Start the MCP server over stdio and block until it exits.
+
+    Exits the process with status 1 if the backend cannot be initialized or the
+    server stops with an unexpected error.
+
+    Args:
+        backend: Either "api" or "local".
+        log_level: Name of the logging level for stderr output.
+    """
+    _configure_logging(log_level)
+    logger.info("Starting Lean Explore MCP Server with backend: %s", backend)
+
+    try:
+        attach_backend(mcp_app, build_backend(backend))
+    except BackendInitializationError as error:
+        _get_error_console().print(f"Error: {error}", markup=False)
         sys.exit(1)
-        return
+
+    try:
+        mcp_app.run(transport="stdio")
+    except Exception:
+        logger.critical("MCP server exited with an unexpected error.", exc_info=True)
+        sys.exit(1)
     finally:
         logger.info("MCP server has shut down.")
+
+
+def main() -> None:
+    """Parse command-line arguments and run the MCP server."""
+    args = _parse_arguments()
+    run_server(backend=args.backend, log_level=args.log_level)
 
 
 if __name__ == "__main__":

@@ -1,121 +1,153 @@
 """Tests for the embedding client module.
 
-These tests verify the EmbeddingClient class for generating text embeddings
-using sentence transformers.
+``SentenceTransformer`` is replaced by a stub so no model is ever loaded.
 """
 
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import numpy as np
 import pytest
 
-from lean_explore.util.embedding_client import EmbeddingClient, EmbeddingResponse
+from lean_explore.util.embedding_client import (
+    DEFAULT_BATCH_SIZE,
+    EmbeddingClient,
+    EmbeddingResponse,
+)
 
 
-class TestEmbeddingResponse:
-    """Tests for EmbeddingResponse model."""
+class StubSentenceTransformer:
+    """Records encode calls and returns one deterministic vector per text."""
 
-    def test_embedding_response_fields(self):
-        """Test EmbeddingResponse contains expected fields."""
-        response = EmbeddingResponse(
-            texts=["hello", "world"],
-            embeddings=[[0.1, 0.2], [0.3, 0.4]],
-            model="test-model",
-        )
+    def __init__(self, model_name, device):
+        """Record construction arguments."""
+        self.model_name = model_name
+        self.device = device
+        self.encode_calls: list[tuple[list[str], dict]] = []
+        self.error: Exception | None = None
 
-        assert response.texts == ["hello", "world"]
-        assert len(response.embeddings) == 2
-        assert response.model == "test-model"
+    def encode(self, texts, **kwargs):
+        """Return a [len(texts), 3] array whose rows identify each text."""
+        if self.error is not None:
+            raise self.error
+        self.encode_calls.append((list(texts), kwargs))
+        return np.array([[float(len(t)), float(i), 0.5] for i, t in enumerate(texts)])
+
+
+@pytest.fixture
+def stub_st():
+    """Patch SentenceTransformer with the stub class."""
+    with patch(
+        "lean_explore.util.embedding_client.SentenceTransformer",
+        StubSentenceTransformer,
+    ):
+        yield
+
+
+@pytest.fixture
+def client(stub_st, monkeypatch):
+    """Create a CPU embedding client backed by the stub."""
+    monkeypatch.delenv("LEAN_EXPLORE_EMBEDDING_BATCH_SIZE", raising=False)
+    return EmbeddingClient(model_name="test-model", device="cpu")
 
 
 class TestEmbeddingClientInit:
     """Tests for EmbeddingClient initialization."""
 
-    def test_select_device_cpu(self):
-        """Test device selection falls back to CPU."""
-        with patch("lean_explore.util.embedding_client.torch") as mock_torch:
-            mock_torch.cuda.is_available.return_value = False
-            mock_torch.backends.mps.is_available.return_value = False
+    @pytest.mark.parametrize(
+        ("cuda", "mps", "expected"),
+        [(True, True, "cuda"), (False, True, "mps"), (False, False, "cpu")],
+    )
+    def test_auto_device_selection(self, stub_st, cuda, mps, expected):
+        """Device auto-detection prefers CUDA, then MPS, then CPU."""
+        with patch("lean_explore.util.device.torch") as mock_torch:
+            mock_torch.cuda.is_available.return_value = cuda
+            mock_torch.backends.mps.is_available.return_value = mps
+            client = EmbeddingClient(model_name="test-model")
+        assert client.device == expected
+        assert client.model.device == expected
 
-            with patch(
-                "lean_explore.util.embedding_client.SentenceTransformer"
-            ) as mock_st:
-                mock_st.return_value = MagicMock()
-                client = EmbeddingClient(model_name="test-model")
+    def test_explicit_device_is_passed_to_model(self, stub_st):
+        """An explicit device skips detection and is forwarded to the model."""
+        with patch("lean_explore.util.device.torch") as mock_torch:
+            client = EmbeddingClient(model_name="test-model", device="cpu")
+            mock_torch.cuda.is_available.assert_not_called()
+        assert client.model.model_name == "test-model"
+        assert client.model.device == "cpu"
 
-                assert client.device == "cpu"
+    def test_max_length_sets_model_limit(self, stub_st):
+        """max_length is applied to the model's max_seq_length."""
+        client = EmbeddingClient(model_name="m", device="cpu", max_length=256)
+        assert client.model.max_seq_length == 256
 
-    def test_select_device_cuda(self):
-        """Test device selection prefers CUDA when available."""
-        with patch("lean_explore.util.embedding_client.torch") as mock_torch:
-            mock_torch.cuda.is_available.return_value = True
+    def test_max_length_none_leaves_model_default(self, stub_st):
+        """Without max_length the model's own limit is untouched."""
+        client = EmbeddingClient(model_name="m", device="cpu")
+        assert not hasattr(client.model, "max_seq_length")
 
-            with patch(
-                "lean_explore.util.embedding_client.SentenceTransformer"
-            ) as mock_st:
-                mock_st.return_value = MagicMock()
-                client = EmbeddingClient(model_name="test-model")
-
-                assert client.device == "cuda"
-
-    def test_max_length_setting(self):
-        """Test that max_length is set on model."""
-        with patch("lean_explore.util.embedding_client.torch") as mock_torch:
-            mock_torch.cuda.is_available.return_value = False
-
-            with patch(
-                "lean_explore.util.embedding_client.SentenceTransformer"
-            ) as mock_st:
-                mock_model = MagicMock()
-                mock_st.return_value = mock_model
-
-                _client = EmbeddingClient(model_name="test-model", max_length=256)
-
-                assert mock_model.max_seq_length == 256
+    @pytest.mark.parametrize(
+        ("explicit", "env", "expected"),
+        [(4, "64", 4), (None, "64", 64), (None, None, DEFAULT_BATCH_SIZE)],
+    )
+    def test_batch_size_resolution(self, stub_st, monkeypatch, explicit, env, expected):
+        """Explicit batch size beats the env var, which beats the default."""
+        if env is None:
+            monkeypatch.delenv("LEAN_EXPLORE_EMBEDDING_BATCH_SIZE", raising=False)
+        else:
+            monkeypatch.setenv("LEAN_EXPLORE_EMBEDDING_BATCH_SIZE", env)
+        client = EmbeddingClient(model_name="m", device="cpu", batch_size=explicit)
+        assert client.batch_size == expected
 
 
 class TestEmbeddingClientEmbed:
-    """Tests for EmbeddingClient.embed method."""
+    """Tests for EmbeddingClient.embed."""
 
-    @pytest.fixture
-    def mock_client(self):
-        """Create a mock embedding client."""
-        with patch("lean_explore.util.embedding_client.torch") as mock_torch:
-            mock_torch.cuda.is_available.return_value = False
-
-            with patch(
-                "lean_explore.util.embedding_client.SentenceTransformer"
-            ) as mock_st:
-                mock_model = MagicMock()
-                # Return numpy arrays like the real model
-                mock_model.encode.return_value = np.array([[0.1] * 1024, [0.2] * 1024])
-                mock_st.return_value = mock_model
-
-                yield EmbeddingClient(model_name="test-model")
-
-    async def test_embed_returns_response(self, mock_client):
-        """Test that embed returns EmbeddingResponse."""
-        response = await mock_client.embed(["hello", "world"])
+    async def test_embed_returns_one_list_per_text_in_order(self, client):
+        """Embeddings are plain float lists aligned with the input texts."""
+        response = await client.embed(["hi", "world"])
 
         assert isinstance(response, EmbeddingResponse)
-        assert len(response.embeddings) == 2
+        assert response.texts == ["hi", "world"]
         assert response.model == "test-model"
+        assert response.embeddings == [[2.0, 0.0, 0.5], [5.0, 1.0, 0.5]]
+        assert all(isinstance(v, float) for v in response.embeddings[0])
 
-    async def test_embed_with_query_flag(self, mock_client):
-        """Test that is_query flag passes prompt_name."""
-        await mock_client.embed(["query"], is_query=True)
+    async def test_document_encoding_has_no_prompt(self, client):
+        """Documents are encoded without a prompt, using the batch size."""
+        await client.embed(["document"])
+        texts, kwargs = client.model.encode_calls[0]
+        assert texts == ["document"]
+        assert kwargs == {
+            "show_progress_bar": False,
+            "convert_to_numpy": True,
+            "batch_size": DEFAULT_BATCH_SIZE,
+        }
 
-        # Verify encode was called with prompt_name
-        call_kwargs = mock_client.model.encode.call_args[1]
-        assert call_kwargs.get("prompt_name") == "query"
+    async def test_query_encoding_uses_query_prompt(self, client):
+        """is_query=True selects the model's "query" prompt."""
+        await client.embed(["query"], is_query=True)
+        _, kwargs = client.model.encode_calls[0]
+        assert kwargs["prompt_name"] == "query"
 
-    async def test_embed_without_query_flag(self, mock_client):
-        """Test that documents don't use prompt_name."""
-        await mock_client.embed(["document"], is_query=False)
+    async def test_empty_input(self, client):
+        """An empty list yields an empty response."""
+        response = await client.embed([])
+        assert response.texts == []
+        assert response.embeddings == []
 
-        # Verify encode was called without prompt_name
-        call_kwargs = mock_client.model.encode.call_args[1]
-        assert "prompt_name" not in call_kwargs
+    async def test_encode_errors_propagate(self, client):
+        """Errors raised by the model reach the caller."""
+        client.model.error = RuntimeError("CUDA out of memory")
+        with pytest.raises(RuntimeError, match="CUDA out of memory"):
+            await client.embed(["x"])
+
+
+class TestEmbeddingResponse:
+    """Tests for EmbeddingResponse validation."""
+
+    def test_rejects_non_numeric_embeddings(self):
+        """Pydantic validation rejects malformed embeddings."""
+        with pytest.raises(ValueError):
+            EmbeddingResponse(texts=["a"], embeddings=[["x"]], model="m")
 
 
 class TestEmbeddingClientIntegration:
@@ -125,7 +157,6 @@ class TestEmbeddingClientIntegration:
     @pytest.mark.slow
     async def test_embed_real_model(self):
         """Test embedding generation with a small real model."""
-        # Use a small model for testing
         client = EmbeddingClient(
             model_name="sentence-transformers/all-MiniLM-L6-v2",
             max_length=128,
@@ -134,7 +165,5 @@ class TestEmbeddingClientIntegration:
         response = await client.embed(["Hello, world!", "Test sentence"])
 
         assert len(response.embeddings) == 2
-        # MiniLM produces 384-dimensional embeddings
         assert len(response.embeddings[0]) == 384
-        # Embeddings should be different
         assert response.embeddings[0] != response.embeddings[1]

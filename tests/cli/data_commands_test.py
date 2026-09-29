@@ -3,7 +3,10 @@
 These tests verify the data toolchain management commands including fetch and clean.
 """
 
+import shutil
 import tempfile
+import threading
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -11,6 +14,9 @@ import pytest
 from typer.testing import CliRunner
 
 from lean_explore.cli.data_commands import (
+    BM25_DIRECTORIES,
+    REQUIRED_FILES,
+    _build_download_list,
     _cleanup_old_versions,
     _fetch_latest_version,
     _get_console,
@@ -18,6 +24,7 @@ from lean_explore.cli.data_commands import (
     _write_active_version,
     app,
 )
+from lean_explore.config import Config
 
 runner = CliRunner()
 
@@ -144,79 +151,202 @@ class TestCleanupOldVersions:
                 _cleanup_old_versions("any_version")
 
 
+class StubHandler(BaseHTTPRequestHandler):
+    """Serves ``server.files``; paths in ``server.truncate`` are cut short."""
+
+    def do_GET(self):  # noqa: N802 - name required by BaseHTTPRequestHandler
+        """Serve a stored file, a 404, or a truncated body."""
+        self.server.requests.append(self.path)
+        body = self.server.files.get(self.path)
+        if body is None:
+            self.send_error(404)
+            return
+        self.send_response(200)
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        if self.path in self.server.truncate:
+            # Simulate a dropped connection mid-download.
+            self.wfile.write(body[: len(body) // 2])
+            self.close_connection = True
+            return
+        self.wfile.write(body)
+
+    def log_message(self, format, *args):  # noqa: A002
+        """Silence per-request logging."""
+
+
+@pytest.fixture
+def file_server(tmp_path, monkeypatch):
+    """Run a local stand-in for the R2 asset server and point Config at it.
+
+    Serves ``latest.txt`` = "v2" and every toolchain file of version v2 with
+    content equal to its own URL path.
+    """
+    server = ThreadingHTTPServer(("127.0.0.1", 0), StubHandler)
+    server.requests, server.truncate = [], set()
+    base = f"http://127.0.0.1:{server.server_port}"
+    server.files = {"/assets/latest.txt": b"v2\n"}
+    for url, _ in _build_download_list(f"{base}/assets/v2", Path("unused")):
+        path = url.removeprefix(base)
+        server.files[path] = path.encode()
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    monkeypatch.setattr(Config, "R2_ASSETS_BASE_URL", base)
+    monkeypatch.setattr(Config, "CACHE_DIRECTORY", tmp_path / "cache")
+    yield server
+    server.shutdown()
+    server.server_close()
+
+
+def installed_files(version_dir: Path) -> dict[str, bytes]:
+    """Map each file under version_dir (relative POSIX path) to its bytes."""
+    return {
+        p.relative_to(version_dir).as_posix(): p.read_bytes()
+        for p in version_dir.rglob("*")
+        if p.is_file()
+    }
+
+
+EXPECTED_RELATIVE_PATHS = sorted(
+    REQUIRED_FILES
+    + [f"{d}/{name}" for d, names in BM25_DIRECTORIES.items() for name in names]
+)
+
+
 class TestInstallToolchain:
-    """Tests for the _install_toolchain function."""
+    """End-to-end install flow against the local stub server."""
 
-    def test_install_toolchain_version_fetch_fails(self):
-        """Test error when latest version fetch fails."""
-        with patch(
-            "lean_explore.cli.data_commands._fetch_latest_version",
-            side_effect=ValueError("Failed to fetch"),
-        ):
-            with pytest.raises(ValueError, match="Failed to fetch"):
-                _install_toolchain()
+    def test_installs_latest_version(self, file_server, tmp_path):
+        """Latest version installs fully, activates, and replaces old versions.
 
-    def test_install_toolchain_with_explicit_version(self):
-        """Test that explicit version skips latest fetch."""
-        import requests as requests_module
+        Every file lands under cache/<version>/ with the served content, the
+        active_version file is written, and old version directories (but not
+        stray files) are removed.
+        """
+        cache = tmp_path / "cache"
+        (cache / "v1").mkdir(parents=True)
+        (cache / "v1" / "lean_explore.db").write_bytes(b"old")
+        (cache / "notes.txt").write_text("not a version directory")
 
-        with tempfile.TemporaryDirectory() as tmpdir:
-            cache_dir = Path(tmpdir) / "cache"
+        _install_toolchain()
 
-            # Mock the download to always fail so we can verify version is used
-            with (
-                patch(
-                    "lean_explore.cli.data_commands.Config.CACHE_DIRECTORY", cache_dir
-                ),
-                patch(
-                    "lean_explore.cli.data_commands._fetch_latest_version"
-                ) as mock_fetch,
-                patch("requests.get") as mock_get,
-            ):
-                mock_response = MagicMock()
-                mock_response.raise_for_status.side_effect = (
-                    requests_module.exceptions.HTTPError("Download fail")
-                )
-                mock_get.return_value = mock_response
+        files = installed_files(cache / "v2")
+        assert sorted(files) == EXPECTED_RELATIVE_PATHS
+        for relative, content in files.items():
+            assert content == f"/assets/v2/{relative}".encode()
+        assert (tmp_path / "active_version").read_text() == "v2"
+        assert not (cache / "v1").exists()
+        assert (cache / "notes.txt").exists()
+        assert file_server.requests[0] == "/assets/latest.txt"
 
-                with pytest.raises(ValueError):
-                    _install_toolchain("explicit_version")
+    def test_explicit_version_skips_latest_lookup(self, file_server, tmp_path):
+        """An explicit version is installed without fetching latest.txt."""
+        _install_toolchain("v2")
+        assert "/assets/latest.txt" not in file_server.requests
+        assert (tmp_path / "active_version").read_text() == "v2"
 
-                # Should not call fetch latest when version is explicit
-                mock_fetch.assert_not_called()
+    def test_existing_files_are_not_redownloaded(self, file_server, tmp_path):
+        """Files already present in the version directory are skipped."""
+        db = tmp_path / "cache" / "v2" / "lean_explore.db"
+        db.parent.mkdir(parents=True)
+        db.write_bytes(b"already here")
 
-    @pytest.mark.integration
-    def test_install_toolchain_downloads_all_files(self):
-        """Test that all required files are downloaded."""
-        with tempfile.TemporaryDirectory() as tmpdir:
-            cache_dir = Path(tmpdir) / "cache"
+        _install_toolchain("v2")
 
-            downloaded_urls = []
+        assert "/assets/v2/lean_explore.db" not in file_server.requests
+        assert db.read_bytes() == b"already here"
 
-            def mock_get(url, **kwargs):
-                downloaded_urls.append(url)
-                response = MagicMock()
-                response.headers = {"content-length": "100"}
-                response.iter_content = MagicMock(return_value=[b"data"])
-                return response
+    def test_http_error_aborts_without_activating(self, file_server, tmp_path):
+        """A 404 raises ValueError and leaves the previous install active."""
+        (tmp_path / "cache" / "v1").mkdir(parents=True)
+        (tmp_path / "active_version").write_text("v1")
+        del file_server.files["/assets/v2/bm25_ids_map.json"]
 
-            with (
-                patch(
-                    "lean_explore.cli.data_commands.Config.CACHE_DIRECTORY", cache_dir
-                ),
-                patch(
-                    "lean_explore.cli.data_commands._fetch_latest_version",
-                    return_value="test_version",
-                ),
-                patch("requests.get", side_effect=mock_get),
-            ):
-                _install_toolchain()
+        with pytest.raises(ValueError, match="Failed to download .*bm25_ids_map"):
+            _install_toolchain()
 
-                # Verify key files were requested
-                url_paths = [url.split("/")[-1] for url in downloaded_urls]
-                assert "lean_explore.db" in url_paths
-                assert "informalization_faiss.index" in url_paths
-                assert "bm25_ids_map.json" in url_paths
+        assert (tmp_path / "active_version").read_text() == "v1"
+        assert (tmp_path / "cache" / "v1").exists()
+
+    def test_latest_lookup_failure(self, file_server):
+        """A missing latest.txt surfaces as ValueError before any download."""
+        del file_server.files["/assets/latest.txt"]
+        with pytest.raises(ValueError, match="Failed to fetch latest version"):
+            _install_toolchain()
+        assert file_server.requests == ["/assets/latest.txt"]
+
+    def test_interrupted_download_leaves_partial_file_that_is_reused(
+        self, file_server, tmp_path
+    ):
+        """Documents current behavior: a truncated file is later trusted.
+
+        known bug, fixed separately: downloads are written straight to their
+        final path, so an interrupted transfer leaves a partial file that the
+        next run skips as "existing" and then activates as if complete.
+        """
+        path = "/assets/v2/lean_explore.db"
+        full = bytes(range(256)) * 200  # Several 8 KiB chunks.
+        file_server.files[path] = full
+        file_server.truncate.add(path)
+        db = tmp_path / "cache" / "v2" / "lean_explore.db"
+
+        with pytest.raises(ValueError, match="Failed to download"):
+            _install_toolchain("v2")
+        partial = db.read_bytes()
+        assert len(partial) < len(full)
+        assert full.startswith(partial)
+
+        file_server.truncate.clear()
+        file_server.requests.clear()
+        _install_toolchain("v2")
+
+        assert path not in file_server.requests
+        assert db.read_bytes() == partial
+        assert (tmp_path / "active_version").read_text() == "v2"
+
+    def test_fetch_command_end_to_end(self, file_server, tmp_path):
+        """The ``fetch`` CLI command installs from the server."""
+        result = runner.invoke(app, ["fetch"])
+        assert result.exit_code == 0, result.output
+        assert "Installed data for version v2" in result.output
+        assert (tmp_path / "active_version").read_text() == "v2"
+
+
+class TestCleanupFailures:
+    """Tests for filesystem error handling."""
+
+    def test_cleanup_continues_after_rmtree_error(self, tmp_path, monkeypatch):
+        """A failure removing one old version does not stop the others."""
+        for name in ("a", "b", "keep"):
+            (tmp_path / name).mkdir()
+        real_rmtree = shutil.rmtree
+
+        def flaky_rmtree(path):
+            if Path(path).name == "a":
+                raise OSError("busy")
+            real_rmtree(path)
+
+        monkeypatch.setattr(Config, "CACHE_DIRECTORY", tmp_path)
+        monkeypatch.setattr(
+            "lean_explore.cli.data_commands.shutil.rmtree", flaky_rmtree
+        )
+        _cleanup_old_versions("keep")
+
+        assert sorted(p.name for p in tmp_path.iterdir()) == ["a", "keep"]
+
+    def test_clean_command_reports_os_error(self, tmp_path, monkeypatch):
+        """``clean`` exits with code 1 when deletion fails."""
+        (tmp_path / "cache").mkdir()
+        monkeypatch.setattr(Config, "CACHE_DIRECTORY", tmp_path / "cache")
+
+        def deny(path):
+            raise OSError("permission denied")
+
+        monkeypatch.setattr("lean_explore.cli.data_commands.shutil.rmtree", deny)
+        result = runner.invoke(app, ["clean"], input="y\n")
+
+        assert result.exit_code == 1
+        assert "Error cleaning data" in result.output
 
 
 class TestFetchCommand:

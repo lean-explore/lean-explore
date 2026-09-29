@@ -1,409 +1,213 @@
-"""Tests for FAISS index building.
+"""Tests for building the FAISS and BM25 search indices.
 
-These tests verify the creation of FAISS HNSW indices from declaration embeddings.
+FAISS k-means training crashes on macOS when torch's OpenMP runtime is already
+loaded (other test modules import torch), so FAISS builds run in a fresh
+interpreter that only imports the index module.
 """
 
 import json
+import os
+import subprocess
+import sys
 from pathlib import Path
-from unittest.mock import patch
 
-import faiss
+import bm25s
 import numpy as np
 import pytest
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import create_engine
+from sqlalchemy.orm import Session
 
+import lean_explore
+from lean_explore.config import Config
+from lean_explore.extract import index
 from lean_explore.extract.index import (
-    _build_faiss_index,
-    _get_device,
     _load_embeddings_from_database,
+    build_bm25_indices,
     build_faiss_indices,
 )
-from lean_explore.models import Declaration
+from lean_explore.search.tokenization import tokenize_raw, tokenize_spaced
+from tests.extract.builders import (
+    create_database,
+    make_declaration,
+    sqlite_url,
+    write_database,
+)
+
+NAMES = ["Nat.add", "Nat.add_comm", "List.map", "List.foldl", "Real.sqrt"]
+
+FAISS_SCRIPT = """
+import asyncio, json, sys
+from pathlib import Path
+import faiss, numpy as np
+from sqlalchemy.ext.asyncio import create_async_engine
+from lean_explore.extract.index import build_faiss_indices
+
+faiss.get_num_gpus = lambda: 0  # Some macOS wheels report a GPU but lack GpuIndex
+url, out, query = sys.argv[1], Path(sys.argv[2]), json.loads(sys.argv[3])
+asyncio.run(build_faiss_indices(create_async_engine(url), output_directory=out))
+built = faiss.read_index(str(out / "informalization_faiss.index"))
+built.nprobe = 256
+_, positions = built.search(np.array([query], dtype=np.float32), 1)
+print(json.dumps({"ntotal": built.ntotal, "d": built.d, "top": int(positions[0][0])}))
+"""
 
 
-class TestDeviceDetection:
-    """Tests for device detection."""
-
-    def test_get_device_cpu(self):
-        """Test device detection defaulting to CPU."""
-        with patch("lean_explore.extract.index.faiss") as mock_faiss:
-            mock_faiss.get_num_gpus.return_value = 0
-
-            device = _get_device()
-
-            assert device == "cpu"
-
-    def test_get_device_cuda(self):
-        """Test device detection with CUDA available."""
-        with patch("lean_explore.extract.index.faiss") as mock_faiss:
-            mock_faiss.get_num_gpus.return_value = 1
-
-            device = _get_device()
-
-            assert device == "cuda"
-
-    def test_get_device_mps(self):
-        """Test device detection - MPS not supported by FAISS, falls back to CPU."""
-        with patch("lean_explore.extract.index.faiss") as mock_faiss:
-            # FAISS doesn't support MPS, so it will always report 0 GPUs on Mac
-            mock_faiss.get_num_gpus.return_value = 0
-
-            device = _get_device()
-
-            # FAISS doesn't support MPS, so it uses CPU
-            assert device == "cpu"
+async def _bm25_output(tmp_path: Path, names: list[str]) -> Path:
+    engine = await create_database(
+        tmp_path / "search.db", [make_declaration(n) for n in names]
+    )
+    output = tmp_path / "out"
+    await build_bm25_indices(engine, output_directory=output)
+    await engine.dispose()
+    return output
 
 
-class TestEmbeddingLoading:
-    """Tests for loading embeddings from database."""
+def _bm25_ranking(output: Path, index_name: str, tokens: list[str]) -> list[str]:
+    """Rank all NAMES with a saved BM25 index (declaration IDs are 1-based)."""
+    ids = json.loads((output / "bm25_ids_map.json").read_text())
+    loaded = bm25s.BM25.load(str(output / index_name))
+    positions, _ = loaded.retrieve([tokens], k=len(ids))
+    return [NAMES[ids[position] - 1] for position in positions[0]]
 
-    def test_load_embeddings_from_database(self, temp_directory):
-        """Test loading embeddings for informalization field."""
-        from sqlalchemy import create_engine
-        from sqlalchemy.orm import Session
 
-        from lean_explore.models.search_db import Base
+def _embedded_declarations(count: int, dimension: int = 8) -> list:
+    vectors = np.random.default_rng(0).random((count, dimension), dtype=np.float32)
+    # Unit vectors: under inner product each vector is its own nearest neighbor
+    vectors /= np.linalg.norm(vectors, axis=1, keepdims=True)
+    return [
+        make_declaration(f"D{i}", embedding=vectors[i].tolist()) for i in range(count)
+    ]
 
-        db_path = temp_directory / "test.db"
-        engine = create_engine(f"sqlite:///{db_path}")
-        Base.metadata.create_all(engine)
 
+class TestBuildBm25Indices:
+    """Tests for build_bm25_indices."""
+
+    async def test_spaced_index_round_trip(self, tmp_path):
+        """Saved spaced index finds names by their dotted/underscored parts."""
+        output = await _bm25_output(tmp_path, NAMES)
+
+        ranking = _bm25_ranking(output, "bm25_name_spaced", tokenize_spaced("add comm"))
+
+        assert ranking[:2] == ["Nat.add_comm", "Nat.add"]
+
+    async def test_raw_index_matches_full_names_only(self, tmp_path):
+        """Saved raw index ranks the exact full name first."""
+        output = await _bm25_output(tmp_path, NAMES)
+
+        ranking = _bm25_ranking(output, "bm25_name_raw", tokenize_raw("List.map"))
+
+        assert ranking[0] == "List.map"
+
+    async def test_ids_map_covers_every_declaration(self, tmp_path):
+        """The ID map lists each declaration ID once."""
+        output = await _bm25_output(tmp_path, NAMES)
+
+        ids = json.loads((output / "bm25_ids_map.json").read_text())
+
+        assert sorted(ids) == list(range(1, len(NAMES) + 1))
+
+    async def test_empty_database_writes_nothing(self, tmp_path):
+        """No declarations means no index files."""
+        output = await _bm25_output(tmp_path, [])
+
+        assert list(output.iterdir()) == []
+
+    async def test_defaults_to_active_data_path(self, tmp_path, monkeypatch):
+        """Without an output directory, indices go to Config.ACTIVE_DATA_PATH."""
+        monkeypatch.setattr(Config, "ACTIVE_DATA_PATH", tmp_path / "active")
+        engine = await create_database(tmp_path / "search.db", [make_declaration("A")])
+
+        await build_bm25_indices(engine)
+        await engine.dispose()
+
+        assert (tmp_path / "active" / "bm25_ids_map.json").exists()
+
+
+class TestLoadEmbeddings:
+    """Tests for _load_embeddings_from_database."""
+
+    def _load(self, tmp_path, declarations):
+        path = write_database(tmp_path / "search.db", declarations)
+        engine = create_engine(sqlite_url(path, async_driver=False))
         with Session(engine) as session:
-            # Add declarations with embeddings
-            for i in range(3):
-                declaration = Declaration(
-                    name=f"Test{i}",
-                    module="Test",
-                    source_text=f"def test{i} := {i}",
-                    source_link=f"https://example.com/{i}",
-                    informalization=f"Test informalization {i}",
-                    informalization_embedding=[float(i)] * 768,
-                )
-                session.add(declaration)
-            session.commit()
-
-            declaration_ids, embeddings = _load_embeddings_from_database(
+            loaded = _load_embeddings_from_database(
                 session, "informalization_embedding"
             )
-
-        assert len(declaration_ids) == 3
-        assert embeddings.shape == (3, 768)
-        assert embeddings.dtype == np.float32
         engine.dispose()
-
-    def test_load_embeddings_filters_none(self, temp_directory):
-        """Test that declarations without embeddings are filtered out."""
-        from sqlalchemy import create_engine
-        from sqlalchemy.orm import Session
-
-        from lean_explore.models.search_db import Base
-
-        db_path = temp_directory / "test.db"
-        engine = create_engine(f"sqlite:///{db_path}")
-        Base.metadata.create_all(engine)
-
-        with Session(engine) as session:
-            # Add declarations with and without embeddings
-            decl_with = Declaration(
-                name="HasEmbedding",
-                module="Test",
-                source_text="def test := 1",
-                source_link="https://example.com",
-                informalization="Has embedding",
-                informalization_embedding=[0.1] * 768,
-            )
-            decl_without = Declaration(
-                name="NoEmbedding",
-                module="Test",
-                source_text="def test2 := 2",
-                source_link="https://example.com",
-                informalization="No embedding",
-            )
-            session.add(decl_with)
-            session.add(decl_without)
-            session.commit()
-
-            declaration_ids, embeddings = _load_embeddings_from_database(
-                session, "informalization_embedding"
-            )
-
-        # Should only return the one with embedding
-        assert len(declaration_ids) == 1
-        assert embeddings.shape == (1, 768)
-        engine.dispose()
-
-    def test_load_embeddings_empty_database(self, temp_directory):
-        """Test loading from database with no embeddings."""
-        from sqlalchemy import create_engine
-        from sqlalchemy.orm import Session
-
-        from lean_explore.models.search_db import Base
-
-        db_path = temp_directory / "test.db"
-        engine = create_engine(f"sqlite:///{db_path}")
-        Base.metadata.create_all(engine)
-
-        with Session(engine) as session:
-            declaration_ids, embeddings = _load_embeddings_from_database(
-                session, "informalization_embedding"
-            )
-
-        assert declaration_ids == []
-        assert embeddings.shape == (0,)
-        engine.dispose()
-
-
-class TestFAISSIndexBuilding:
-    """Tests for FAISS IVF index construction.
-
-    Note: These tests are marked as external because FAISS training causes
-    segfaults on macOS due to OpenMP library conflicts between torch and FAISS.
-    """
-
-    @pytest.mark.external
-    def test_build_faiss_index_cpu(self):
-        """Test building FAISS IVF index on CPU."""
-        # Need enough vectors to train IVF (at least 256 for default nlist)
-        embeddings = np.random.rand(300, 768).astype(np.float32)
-
-        index = _build_faiss_index(embeddings, device="cpu")
-
-        assert isinstance(index, faiss.IndexIVFFlat)
-        assert index.ntotal == 300
-        assert index.d == 768
-
-    @pytest.mark.external
-    def test_build_faiss_index_small_dataset(self):
-        """Test building index with smaller number of vectors."""
-        # Still need minimum vectors for IVF training
-        embeddings = np.random.rand(300, 768).astype(np.float32)
-
-        index = _build_faiss_index(embeddings, device="cpu")
-
-        assert index.ntotal == 300
-
-    @pytest.mark.external
-    def test_build_faiss_index_search(self):
-        """Test that built index can perform searches."""
-        # Create embeddings with known structure, enough for IVF training
-        num_vectors = 300
-        dimension = 768
-        embeddings = np.random.rand(num_vectors, dimension).astype(np.float32)
-        # Make first vector distinctive
-        embeddings[0] = np.array([1.0] + [0.0] * (dimension - 1), dtype=np.float32)
-
-        index = _build_faiss_index(embeddings, device="cpu")
-
-        # Set nprobe for better recall on IVF index
-        index.nprobe = 10
-
-        # Search for vector similar to first embedding
-        query = np.array([[1.0] + [0.0] * (dimension - 1)]).astype(np.float32)
-        distances, indices = index.search(query, k=1)
-
-        # Should return first embedding as closest
-        assert indices[0][0] == 0
-
-    @pytest.mark.external
-    def test_build_faiss_index_cuda(self):
-        """Test building FAISS index with CUDA (if available)."""
-        if faiss.get_num_gpus() == 0:
-            pytest.skip("No CUDA GPUs available")
-
-        # Need enough vectors for IVF training
-        embeddings = np.random.rand(300, 768).astype(np.float32)
-
-        index = _build_faiss_index(embeddings, device="cuda")
-
-        # Index is converted back to CPU after GPU training
-        assert isinstance(index, faiss.IndexIVFFlat)
-        assert index.ntotal == 300
-
-
-class TestBuildFAISSIndices:
-    """Tests for building all FAISS indices.
-
-    Note: These tests are marked as external because FAISS training causes
-    segfaults on macOS due to OpenMP library conflicts between torch and FAISS.
-    """
-
-    @pytest.mark.external
-    async def test_build_faiss_indices_full_pipeline(self, temp_directory):
-        """Test building FAISS index from database."""
-        from sqlalchemy.ext.asyncio import create_async_engine
-
-        from lean_explore.models.search_db import Base
-
-        # Use file-based database (sync engine needs persistent connection)
-        db_path = temp_directory / "test.db"
-        async_engine = create_async_engine(f"sqlite+aiosqlite:///{db_path}")
-
-        async with async_engine.begin() as conn:
-            await conn.run_sync(Base.metadata.create_all)
-
-        # Add declarations with embeddings (need 300+ for IVF training)
-        num_declarations = 300
-        async with AsyncSession(async_engine) as session:
-            for i in range(num_declarations):
-                declaration = Declaration(
-                    name=f"Declaration{i}",
-                    module="Test",
-                    source_text=f"def test{i} := {i}",
-                    source_link=f"https://example.com/{i}",
-                    informalization=f"Declaration number {i}",
-                    informalization_embedding=[float(i % 100) / 100.0 + 0.1] * 768,
-                )
-                session.add(declaration)
-            await session.commit()
-
-        output_directory = temp_directory / "indices"
-
-        with patch("lean_explore.extract.index._get_device") as mock_device:
-            mock_device.return_value = "cpu"
-
-            await build_faiss_indices(async_engine, output_directory)
-
-        await async_engine.dispose()
-
-        # Verify index file was created
-        assert (output_directory / "informalization_faiss.index").exists()
-
-        # Verify ID mapping file was created
-        assert (output_directory / "informalization_faiss_ids_map.json").exists()
-
-        # Verify index file can be loaded
-        index = faiss.read_index(str(output_directory / "informalization_faiss.index"))
-        assert index.ntotal == num_declarations
-
-        # Verify ID mappings are correct
-        with open(output_directory / "informalization_faiss_ids_map.json") as f:
-            id_mapping = json.load(f)
-        assert len(id_mapping) == num_declarations
-
-    @pytest.mark.integration
-    async def test_build_faiss_indices_empty_database(self, temp_directory):
-        """Test building indices from empty database."""
-        from sqlalchemy.ext.asyncio import create_async_engine
-
-        from lean_explore.models.search_db import Base
-
-        # Use file-based database
-        db_path = temp_directory / "test.db"
-        async_engine = create_async_engine(f"sqlite+aiosqlite:///{db_path}")
-
-        async with async_engine.begin() as conn:
-            await conn.run_sync(Base.metadata.create_all)
-
-        output_directory = temp_directory / "indices"
-
-        with patch("lean_explore.extract.index._get_device") as mock_device:
-            mock_device.return_value = "cpu"
-
-            # Should complete without errors
-            await build_faiss_indices(async_engine, output_directory)
-
-        await async_engine.dispose()
-
-        # No index files should be created
-        index_files = list(output_directory.glob("*.index"))
-        assert len(index_files) == 0
-
-    @pytest.mark.external
-    async def test_build_faiss_indices_default_output_path(self, temp_directory):
-        """Test building indices with default output path."""
-        from sqlalchemy.ext.asyncio import create_async_engine
-
-        from lean_explore.models.search_db import Base
-
-        # Use file-based database
-        db_path = temp_directory / "test.db"
-        async_engine = create_async_engine(f"sqlite+aiosqlite:///{db_path}")
-
-        async with async_engine.begin() as conn:
-            await conn.run_sync(Base.metadata.create_all)
-
-        # Add enough declarations for IVF training
-        async with AsyncSession(async_engine) as session:
-            for i in range(300):
-                declaration = Declaration(
-                    name=f"Test{i}",
-                    module="Test",
-                    source_text=f"def test{i} := {i}",
-                    source_link=f"https://example.com/{i}",
-                    informalization=f"Test informalization {i}",
-                    informalization_embedding=[float(i % 100) / 100.0 + 0.1] * 768,
-                )
-                session.add(declaration)
-            await session.commit()
-
-        with patch("lean_explore.extract.index.Config") as mock_config:
-            mock_output_path = Path("/tmp/test_output")
-            mock_config.ACTIVE_DATA_PATH = mock_output_path
-
-            with patch("lean_explore.extract.index._get_device") as mock_device:
-                mock_device.return_value = "cpu"
-
-                with patch(
-                    "lean_explore.extract.index.faiss.write_index"
-                ) as mock_write:
-                    with patch("builtins.open", create=True):
-                        await build_faiss_indices(async_engine, output_directory=None)
-
-                        # Should use Config.ACTIVE_DATA_PATH
-                        # Verify the path was created
-                        mock_write.assert_called()
-
-        await async_engine.dispose()
-
-    @pytest.mark.external
-    async def test_build_faiss_indices_correct_id_mapping(self, temp_directory):
-        """Test that ID mappings correctly correspond to FAISS indices."""
-        from sqlalchemy.ext.asyncio import create_async_engine
-
-        from lean_explore.models.search_db import Base
-
-        # Use file-based database
-        db_path = temp_directory / "test.db"
-        async_engine = create_async_engine(f"sqlite+aiosqlite:///{db_path}")
-
-        async with async_engine.begin() as conn:
-            await conn.run_sync(Base.metadata.create_all)
-
-        num_declarations = 300  # Need enough for IVF training
-        async with AsyncSession(async_engine) as session:
-            # Add declarations with known IDs
-            declarations = []
-            for i in range(num_declarations):
-                declaration = Declaration(
-                    name=f"Declaration{i}",
-                    module="Test",
-                    source_text=f"def test{i} := {i}",
-                    source_link=f"https://example.com/{i}",
-                    informalization=f"Declaration number {i}",
-                    informalization_embedding=[float(i % 100) / 100.0 + 0.1] * 768,
-                )
-                session.add(declaration)
-                declarations.append(declaration)
-            await session.commit()
-
-            # Get the actual database IDs
-            from sqlalchemy import select
-
-            result = await session.execute(select(Declaration).order_by(Declaration.id))
-            db_declarations = result.scalars().all()
-            expected_ids = [d.id for d in db_declarations]
-
-        output_directory = temp_directory / "indices"
-
-        with patch("lean_explore.extract.index._get_device") as mock_device:
-            mock_device.return_value = "cpu"
-
-            await build_faiss_indices(async_engine, output_directory)
-
-        await async_engine.dispose()
-
-        # Load ID mapping and verify it matches database IDs
-        with open(output_directory / "informalization_faiss_ids_map.json") as f:
-            id_mapping = json.load(f)
-
-        assert id_mapping == expected_ids
+        return loaded
+
+    def test_loads_only_rows_with_embeddings(self, tmp_path):
+        """IDs and a float32 matrix are returned for embedded rows."""
+        declarations = [
+            make_declaration("A", embedding=[1.0, 2.0]),
+            make_declaration("B"),
+            make_declaration("C", embedding=[3.0, 4.0]),
+        ]
+
+        ids, matrix = self._load(tmp_path, declarations)
+
+        assert ids == [1, 3]
+        assert matrix.dtype == np.float32
+        assert matrix.tolist() == [[1.0, 2.0], [3.0, 4.0]]
+
+    def test_no_embeddings(self, tmp_path):
+        """Without embeddings an empty result is returned."""
+        ids, matrix = self._load(tmp_path, [make_declaration("A")])
+
+        assert ids == []
+        assert matrix.shape == (0,)
+
+
+class TestBuildFaissIndices:
+    """Tests for build_faiss_indices."""
+
+    @pytest.mark.parametrize(("gpus", "device"), [(0, "cpu"), (1, "cuda")])
+    def test_get_device(self, monkeypatch, gpus, device):
+        """CUDA is used only when FAISS sees a GPU."""
+        monkeypatch.setattr(index.faiss, "get_num_gpus", lambda: gpus)
+
+        assert index._get_device() == device
+
+    async def test_empty_database_writes_nothing(self, tmp_path):
+        """Without embeddings no FAISS files are written."""
+        engine = await create_database(tmp_path / "search.db", [make_declaration("A")])
+        output = tmp_path / "out"
+
+        await build_faiss_indices(engine, output_directory=output)
+        await engine.dispose()
+
+        assert list(output.iterdir()) == []
+
+    def test_build_and_search_round_trip(self, tmp_path):
+        """A saved IVF index over 300 vectors finds a stored vector as its top hit.
+
+        Runs in a subprocess; see the module docstring.
+        """
+        declarations = _embedded_declarations(300)
+        query = declarations[42].informalization_embedding
+        path = write_database(tmp_path / "search.db", declarations)
+        output = tmp_path / "out"
+        output.mkdir()
+
+        env = {**os.environ, "PYTHONPATH": str(Path(lean_explore.__file__).parents[1])}
+        completed = subprocess.run(
+            [
+                sys.executable,
+                "-c",
+                FAISS_SCRIPT,
+                sqlite_url(path),
+                str(output),
+                json.dumps(query),
+            ],
+            capture_output=True,
+            text=True,
+            env=env,
+            timeout=120,
+        )
+
+        assert completed.returncode == 0, completed.stderr
+        result = json.loads(completed.stdout.strip().splitlines()[-1])
+        ids = json.loads((output / "informalization_faiss_ids_map.json").read_text())
+        assert (result["ntotal"], result["d"]) == (300, 8)
+        assert ids == list(range(1, 301))
+        assert ids[result["top"]] == 43

@@ -10,20 +10,23 @@ nearest neighbor search with controllable recall.
 
 import json
 import logging
-import re
 from pathlib import Path
 
 import bm25s
 import faiss
 import numpy as np
-from sqlalchemy import create_engine, select
+from sqlalchemy import Engine, create_engine, select
 from sqlalchemy.ext.asyncio import AsyncEngine
 from sqlalchemy.orm import Session
 
 from lean_explore.config import Config
 from lean_explore.models import Declaration
+from lean_explore.search.tokenization import tokenize_raw, tokenize_spaced
 
 logger = logging.getLogger(__name__)
+
+EMBEDDING_FIELDS = ["informalization_embedding"]
+"""Declaration columns to build FAISS indices for."""
 
 
 def _get_device() -> str:
@@ -42,6 +45,49 @@ def _get_device() -> str:
     return device
 
 
+def _create_sync_engine(engine: AsyncEngine) -> Engine:
+    """Create a sync engine for the same SQLite database as an async engine.
+
+    Sync access avoids aiosqlite issues with binary data.
+
+    Args:
+        engine: Async engine using the sqlite+aiosqlite driver.
+
+    Returns:
+        Sync engine using the default sqlite driver.
+    """
+    return create_engine(str(engine.url).replace("sqlite+aiosqlite", "sqlite"))
+
+
+def _resolve_output_directory(output_directory: Path | None) -> Path:
+    """Return the output directory (default: active data path), creating it.
+
+    Args:
+        output_directory: Requested directory, or None for the default.
+
+    Returns:
+        Existing output directory.
+    """
+    if output_directory is None:
+        output_directory = Config.ACTIVE_DATA_PATH
+    output_directory.mkdir(parents=True, exist_ok=True)
+    return output_directory
+
+
+def _write_ids_map(path: Path, declaration_ids: list[int]) -> None:
+    """Write the index-position to declaration-ID mapping as JSON.
+
+    Args:
+        path: Output file path.
+        declaration_ids: Declaration IDs in index order.
+    """
+    with open(path, "w") as file:
+        json.dump(declaration_ids, file)
+
+
+# --- FAISS ---
+
+
 def _load_embeddings_from_database(
     session: Session, embedding_field: str
 ) -> tuple[list[int], np.ndarray]:
@@ -56,23 +102,21 @@ def _load_embeddings_from_database(
         Tuple of (declaration_ids, embeddings_array) where embeddings_array
         is a numpy array of shape (num_declarations, embedding_dimension).
     """
-    stmt = select(Declaration.id, getattr(Declaration, embedding_field)).where(
-        getattr(Declaration, embedding_field).isnot(None)
-    )
-    result = session.execute(stmt)
-    rows = list(result.all())
+    column = getattr(Declaration, embedding_field)
+    stmt = select(Declaration.id, column).where(column.isnot(None))
+    rows = list(session.execute(stmt).all())
 
     if not rows:
         logger.warning("No declarations found with %s", embedding_field)
         return [], np.array([])
 
     declaration_ids = [row.id for row in rows]
-    embeddings_list = [row[1] for row in rows]
-    embeddings_array = np.array(embeddings_list, dtype=np.float32)
+    embeddings_array = np.array([row[1] for row in rows], dtype=np.float32)
 
     logger.info(
         "Loaded %d embeddings with dimension %d",
-        len(declaration_ids), embeddings_array.shape[1],
+        len(declaration_ids),
+        embeddings_array.shape[1],
     )
 
     return declaration_ids, embeddings_array
@@ -96,12 +140,15 @@ def _build_faiss_index(embeddings: np.ndarray, device: str) -> faiss.Index:
 
     logger.info(
         "Building FAISS IVF index for %d vectors with %d clusters...",
-        num_vectors, nlist,
+        num_vectors,
+        nlist,
     )
 
     # Use inner product (cosine similarity on normalized vectors)
     quantizer = faiss.IndexFlatIP(dimension)
-    index = faiss.IndexIVFFlat(quantizer, dimension, nlist, faiss.METRIC_INNER_PRODUCT)
+    index: faiss.Index = faiss.IndexIVFFlat(
+        quantizer, dimension, nlist, faiss.METRIC_INNER_PRODUCT
+    )
 
     if device == "cuda" and faiss.get_num_gpus() > 0:
         logger.info("Training IVF index on GPU")
@@ -119,6 +166,46 @@ def _build_faiss_index(embeddings: np.ndarray, device: str) -> faiss.Index:
     return index
 
 
+def _build_and_save_faiss_index(
+    session: Session, embedding_field: str, device: str, output_directory: Path
+) -> None:
+    """Build the FAISS index for one embedding column and save it with its ID map.
+
+    Writes ``<field>_faiss.index`` and ``<field>_faiss_ids_map.json`` (with the
+    ``_embedding`` suffix dropped from the field name). Skips empty columns.
+
+    Args:
+        session: Sync database session.
+        embedding_field: Declaration column holding the embeddings.
+        device: Device to build on ('cuda' or 'cpu').
+        output_directory: Directory to write files to.
+    """
+    declaration_ids, embeddings = _load_embeddings_from_database(
+        session, embedding_field
+    )
+    if len(declaration_ids) == 0:
+        logger.warning("Skipping %s (no data)", embedding_field)
+        return
+
+    index = _build_faiss_index(embeddings, device)
+
+    # Move GPU index back to CPU for serialization
+    if device == "cuda" and isinstance(index, faiss.GpuIndex):
+        index = faiss.index_gpu_to_cpu(index)
+
+    index_path = output_directory / embedding_field.replace(
+        "_embedding", "_faiss.index"
+    )
+    faiss.write_index(index, str(index_path))
+    logger.info("Saved FAISS index to %s", index_path)
+
+    ids_map_path = output_directory / embedding_field.replace(
+        "_embedding", "_faiss_ids_map.json"
+    )
+    _write_ids_map(ids_map_path, declaration_ids)
+    logger.info("Saved ID mapping to %s", ids_map_path)
+
+
 async def build_faiss_indices(
     engine: AsyncEngine,
     output_directory: Path | None = None,
@@ -132,87 +219,26 @@ async def build_faiss_indices(
         engine: Async database engine (URL extracted for sync access).
         output_directory: Directory to save indices. Defaults to active data path.
     """
-    if output_directory is None:
-        output_directory = Config.ACTIVE_DATA_PATH
-
-    output_directory.mkdir(parents=True, exist_ok=True)
+    output_directory = _resolve_output_directory(output_directory)
     logger.info("Saving indices to %s", output_directory)
 
     device = _get_device()
-
-    embedding_fields = [
-        "informalization_embedding",
-    ]
-
-    # Use sync engine to avoid aiosqlite issues with binary data
-    sync_url = str(engine.url).replace("sqlite+aiosqlite", "sqlite")
-    sync_engine = create_engine(sync_url)
+    sync_engine = _create_sync_engine(engine)
 
     with Session(sync_engine) as session:
-        for i, embedding_field in enumerate(embedding_fields, 1):
+        for i, embedding_field in enumerate(EMBEDDING_FIELDS, 1):
             logger.info(
-                "Processing %s (%d/%d)...", embedding_field, i, len(embedding_fields)
+                "Processing %s (%d/%d)...", embedding_field, i, len(EMBEDDING_FIELDS)
             )
-
-            declaration_ids, embeddings = _load_embeddings_from_database(
-                session, embedding_field
+            _build_and_save_faiss_index(
+                session, embedding_field, device, output_directory
             )
-
-            if len(declaration_ids) == 0:
-                logger.warning("Skipping %s (no data)", embedding_field)
-                continue
-
-            index = _build_faiss_index(embeddings, device)
-
-            # Move GPU index back to CPU for serialization
-            if device == "cuda" and isinstance(index, faiss.GpuIndex):
-                index = faiss.index_gpu_to_cpu(index)
-
-            index_filename = embedding_field.replace("_embedding", "_faiss.index")
-            index_path = output_directory / index_filename
-            faiss.write_index(index, str(index_path))
-            logger.info("Saved FAISS index to %s", index_path)
-
-            ids_map_filename = embedding_field.replace(
-                "_embedding", "_faiss_ids_map.json"
-            )
-            ids_map_path = output_directory / ids_map_filename
-            with open(ids_map_path, "w") as file:
-                json.dump(declaration_ids, file)
-            logger.info("Saved ID mapping to %s", ids_map_path)
 
     sync_engine.dispose()
     logger.info("All FAISS indices built successfully")
 
 
-def _tokenize_spaced(text: str) -> list[str]:
-    """Tokenize text with spacing on dots, underscores, and camelCase.
-
-    Args:
-        text: Input text to tokenize.
-
-    Returns:
-        List of lowercase word tokens.
-    """
-    if not text:
-        return []
-    text = text.replace(".", " ").replace("_", " ")
-    text = re.sub(r"([a-z])([A-Z])", r"\1 \2", text)
-    return re.findall(r"\w+", text.lower())
-
-
-def _tokenize_raw(text: str) -> list[str]:
-    """Tokenize text as single token (preserves dots).
-
-    Args:
-        text: Input text to tokenize.
-
-    Returns:
-        List with the full text as a single lowercase token.
-    """
-    if not text:
-        return []
-    return [text.lower()]
+# --- BM25 ---
 
 
 def _load_declaration_names(session: Session) -> tuple[list[int], list[str]]:
@@ -224,9 +250,7 @@ def _load_declaration_names(session: Session) -> tuple[list[int], list[str]]:
     Returns:
         Tuple of (declaration_ids, declaration_names).
     """
-    stmt = select(Declaration.id, Declaration.name)
-    result = session.execute(stmt)
-    rows = list(result.all())
+    rows = list(session.execute(select(Declaration.id, Declaration.name)).all())
 
     declaration_ids = [row.id for row in rows]
     declaration_names = [row.name or "" for row in rows]
@@ -252,8 +276,8 @@ def _build_bm25_indices(
     """
     logger.info("Building BM25 indices over declaration names...")
 
-    corpus_spaced = [list(set(_tokenize_spaced(n))) for n in declaration_names]
-    corpus_raw = [list(set(_tokenize_raw(n))) for n in declaration_names]
+    corpus_spaced = [list(set(tokenize_spaced(n))) for n in declaration_names]
+    corpus_raw = [list(set(tokenize_raw(n))) for n in declaration_names]
 
     bm25_spaced = bm25s.BM25(method="bm25+")
     bm25_spaced.index(corpus_spaced)
@@ -279,26 +303,20 @@ async def build_bm25_indices(
         engine: Async database engine (URL extracted for sync access).
         output_directory: Directory to save indices. Defaults to active data path.
     """
-    if output_directory is None:
-        output_directory = Config.ACTIVE_DATA_PATH
-
-    output_directory.mkdir(parents=True, exist_ok=True)
+    output_directory = _resolve_output_directory(output_directory)
     logger.info("Saving BM25 indices to %s", output_directory)
 
-    sync_url = str(engine.url).replace("sqlite+aiosqlite", "sqlite")
-    sync_engine = create_engine(sync_url)
-
+    sync_engine = _create_sync_engine(engine)
     with Session(sync_engine) as session:
         declaration_ids, declaration_names = _load_declaration_names(session)
+    sync_engine.dispose()
 
     if not declaration_ids:
         logger.warning("No declarations found for BM25 indexing")
-        sync_engine.dispose()
         return
 
     bm25_spaced, bm25_raw = _build_bm25_indices(declaration_names)
 
-    # Save BM25 indices
     bm25_spaced_path = output_directory / "bm25_name_spaced"
     bm25_spaced.save(str(bm25_spaced_path))
     logger.info("Saved BM25 spaced index to %s", bm25_spaced_path)
@@ -307,11 +325,8 @@ async def build_bm25_indices(
     bm25_raw.save(str(bm25_raw_path))
     logger.info("Saved BM25 raw index to %s", bm25_raw_path)
 
-    # Save ID mapping (shared by both indices)
+    # Shared by both indices
     ids_map_path = output_directory / "bm25_ids_map.json"
-    with open(ids_map_path, "w") as file:
-        json.dump(declaration_ids, file)
+    _write_ids_map(ids_map_path, declaration_ids)
     logger.info("Saved BM25 ID mapping to %s", ids_map_path)
-
-    sync_engine.dispose()
     logger.info("All BM25 indices built successfully")

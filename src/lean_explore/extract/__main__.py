@@ -5,11 +5,14 @@ This module provides functions to coordinate the complete data extraction pipeli
 2. Generate informal natural language descriptions
 3. Generate vector embeddings for semantic search
 4. Build FAISS indices for vector similarity search
+
+Layers: CLI resolution (``resolve_*``), orchestration (``run_pipeline``), steps.
 """
 
 import asyncio
 import logging
 import os
+from dataclasses import dataclass
 from pathlib import Path
 
 import click
@@ -20,6 +23,143 @@ from lean_explore.models import Base
 from lean_explore.util.logging import setup_logging
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass(frozen=True)
+class PipelineSteps:
+    """Which enrichment steps of the pipeline to run.
+
+    Attributes:
+        parse_docs: Parse doc-gen4 output into the database.
+        informalize: Generate informal natural language descriptions.
+        embeddings: Generate vector embeddings.
+        index: Build FAISS and BM25 search indices.
+    """
+
+    parse_docs: bool
+    informalize: bool
+    embeddings: bool
+    index: bool
+
+    def enabled_names(self) -> list[str]:
+        """Return the CLI names of the enabled steps, in execution order."""
+        flags = {
+            "parse-docs": self.parse_docs,
+            "informalize": self.informalize,
+            "embeddings": self.embeddings,
+            "index": self.index,
+        }
+        return [name for name, enabled in flags.items() if enabled]
+
+
+@dataclass(frozen=True)
+class InformalizeSettings:
+    """Settings for the informalization step.
+
+    Attributes:
+        model: LLM model used to generate informalizations.
+        batch_size: Number of results committed per database batch.
+        max_concurrent: Maximum concurrent LLM requests.
+        limit: Maximum number of declarations to process, or None for all.
+    """
+
+    model: str
+    batch_size: int
+    max_concurrent: int
+    limit: int | None
+
+
+@dataclass(frozen=True)
+class EmbeddingSettings:
+    """Settings for the embeddings step.
+
+    Attributes:
+        model_name: Sentence transformer model name.
+        batch_size: Batch size for embedding generation.
+        limit: Maximum number of declarations to process, or None for all.
+        max_seq_length: Maximum token sequence length.
+        server_url: Running backend to delegate embedding generation to, if any.
+    """
+
+    model_name: str
+    batch_size: int
+    limit: int | None
+    max_seq_length: int
+    server_url: str | None
+
+
+def resolve_steps(
+    run_doc_gen4: bool,
+    parse_docs: bool | None,
+    informalize: bool | None,
+    embeddings: bool | None,
+    index: bool | None,
+) -> PipelineSteps:
+    """Resolve tri-state CLI step flags into a concrete step selection.
+
+    If no step flag was given and ``--run-doc-gen4`` was not passed, every
+    step runs. Otherwise only the explicitly enabled steps run, so a lone
+    ``--no-<step>`` flag disables every step.
+
+    Args:
+        run_doc_gen4: Whether ``--run-doc-gen4`` was passed.
+        parse_docs: ``--parse-docs`` flag value, or None when not given.
+        informalize: ``--informalize`` flag value, or None when not given.
+        embeddings: ``--embeddings`` flag value, or None when not given.
+        index: ``--index`` flag value, or None when not given.
+
+    Returns:
+        The resolved step selection.
+    """
+    flags = (parse_docs, informalize, embeddings, index)
+    if not run_doc_gen4 and all(flag is None for flag in flags):
+        return PipelineSteps(True, True, True, True)
+    return PipelineSteps(*(bool(flag) for flag in flags))
+
+
+def resolve_extraction_path(create_new: bool) -> Path:
+    """Choose the extraction directory for this run.
+
+    Args:
+        create_new: Create a new timestamped directory (used when parsing
+            docs); otherwise reuse the latest existing extraction.
+
+    Returns:
+        Path to the extraction directory.
+
+    Raises:
+        click.ClickException: If reusing and no extraction exists yet.
+    """
+    if create_new:
+        new_path = Config.create_timestamped_extraction_path()
+        logger.info("Created new extraction directory: %s", new_path)
+        return new_path
+
+    extraction_path = Config.get_latest_extraction_path()
+    if extraction_path is None:
+        raise click.ClickException(
+            "No existing extraction found. Run with --parse-docs first."
+        )
+    logger.info("Using existing extraction: %s", extraction_path)
+    return extraction_path
+
+
+def database_url_for(extraction_path: Path) -> str:
+    """Return the async SQLite URL of ``lean_explore.db`` in an extraction."""
+    return f"sqlite+aiosqlite:///{extraction_path / 'lean_explore.db'}"
+
+
+def _require_openrouter_key() -> None:
+    """Fail fast when the OpenRouter API key needed to informalize is missing.
+
+    Raises:
+        RuntimeError: If ``OPENROUTER_API_KEY`` is not set.
+    """
+    if not os.getenv("OPENROUTER_API_KEY"):
+        logger.error(
+            "OPENROUTER_API_KEY environment variable is required for informalization"
+        )
+        raise RuntimeError("OPENROUTER_API_KEY not set")
 
 
 async def _create_database_schema(engine: AsyncEngine) -> None:
@@ -40,7 +180,7 @@ async def _run_doc_gen4_step(fresh: bool = False) -> None:
     Args:
         fresh: Clear cached dependencies to force fresh resolution.
     """
-    from lean_explore.extract.doc_gen4 import run_doc_gen4
+    from lean_explore.extract.docgen.build import run_doc_gen4
 
     logger.info("Running doc-gen4...")
     await run_doc_gen4(fresh=fresh)
@@ -48,8 +188,12 @@ async def _run_doc_gen4_step(fresh: bool = False) -> None:
 
 
 async def _run_extract_step(engine: AsyncEngine) -> None:
-    """Extract declarations from doc-gen4 output."""
-    from lean_explore.extract.doc_parser import extract_declarations
+    """Extract declarations from doc-gen4 output.
+
+    Args:
+        engine: SQLAlchemy async engine instance.
+    """
+    from lean_explore.extract.docgen.parser import extract_declarations
 
     logger.info("Step 1: Extracting declarations from doc-gen4...")
     await extract_declarations(engine)
@@ -57,45 +201,46 @@ async def _run_extract_step(engine: AsyncEngine) -> None:
 
 
 async def _run_informalize_step(
-    engine: AsyncEngine,
-    model: str,
-    batch_size: int,
-    max_concurrent: int,
-    limit: int | None,
+    engine: AsyncEngine, settings: InformalizeSettings
 ) -> None:
-    """Generate informal descriptions for declarations."""
-    from lean_explore.extract.informalize import informalize_declarations
+    """Generate informal descriptions for declarations.
+
+    Args:
+        engine: SQLAlchemy async engine instance.
+        settings: Informalization settings.
+    """
+    from lean_explore.extract.informalize.pipeline import informalize_declarations
 
     logger.info("Step 2: Generating informal descriptions...")
     await informalize_declarations(
         engine,
-        model=model,
-        commit_batch_size=batch_size,
-        max_concurrent=max_concurrent,
-        limit=limit,
+        model=settings.model,
+        commit_batch_size=settings.batch_size,
+        max_concurrent=settings.max_concurrent,
+        limit=settings.limit,
     )
     logger.info("Informalization complete")
 
 
 async def _run_embeddings_step(
-    engine: AsyncEngine,
-    model_name: str,
-    batch_size: int,
-    limit: int | None,
-    max_seq_length: int,
-    embedding_server_url: str | None = None,
+    engine: AsyncEngine, settings: EmbeddingSettings
 ) -> None:
-    """Generate embeddings for all declaration fields."""
+    """Generate embeddings for all declaration fields.
+
+    Args:
+        engine: SQLAlchemy async engine instance.
+        settings: Embedding generation settings.
+    """
     from lean_explore.extract.embeddings import generate_embeddings
 
     logger.info("Step 3: Generating embeddings...")
     await generate_embeddings(
         engine,
-        model_name=model_name,
-        batch_size=batch_size,
-        limit=limit,
-        max_seq_length=max_seq_length,
-        embedding_server_url=embedding_server_url,
+        model_name=settings.model_name,
+        batch_size=settings.batch_size,
+        limit=settings.limit,
+        max_seq_length=settings.max_seq_length,
+        embedding_server_url=settings.server_url,
     )
     logger.info("Embedding generation complete")
 
@@ -113,6 +258,32 @@ async def _run_index_step(engine: AsyncEngine, extraction_path: Path) -> None:
     await build_faiss_indices(engine, output_directory=extraction_path)
     await build_bm25_indices(engine, output_directory=extraction_path)
     logger.info("Index building complete")
+
+
+async def _run_steps(
+    engine: AsyncEngine,
+    extraction_path: Path,
+    steps: PipelineSteps,
+    informalize_settings: InformalizeSettings,
+    embedding_settings: EmbeddingSettings,
+) -> None:
+    """Run the enabled enrichment steps in pipeline order.
+
+    Args:
+        engine: SQLAlchemy async engine with the schema already created.
+        extraction_path: Directory to save indices in.
+        steps: Which steps to run.
+        informalize_settings: Settings for the informalization step.
+        embedding_settings: Settings for the embeddings step.
+    """
+    if steps.parse_docs:
+        await _run_extract_step(engine)
+    if steps.informalize:
+        await _run_informalize_step(engine, informalize_settings)
+    if steps.embeddings:
+        await _run_embeddings_step(engine, embedding_settings)
+    if steps.index:
+        await _run_index_step(engine, extraction_path)
 
 
 async def run_pipeline(
@@ -157,67 +328,44 @@ async def run_pipeline(
         embedding_server_url: URL of a running backend to delegate embedding
             generation to, avoiding local GPU memory usage.
         verbose: Enable verbose logging
+
+    Raises:
+        RuntimeError: If informalization is enabled but ``OPENROUTER_API_KEY``
+            is not set.
     """
     setup_logging(verbose)
-
-    # Validate OpenRouter API key if informalization is needed
     if informalize:
-        if not os.getenv("OPENROUTER_API_KEY"):
-            logger.error(
-                "OPENROUTER_API_KEY environment variable is required for "
-                "informalization"
-            )
-            raise RuntimeError("OPENROUTER_API_KEY not set")
+        _require_openrouter_key()
 
-    steps_enabled = []
-    if parse_docs:
-        steps_enabled.append("parse-docs")
-    if informalize:
-        steps_enabled.append("informalize")
-    if embeddings:
-        steps_enabled.append("embeddings")
-    if index:
-        steps_enabled.append("index")
-
+    steps = PipelineSteps(parse_docs, informalize, embeddings, index)
     logger.info("Starting Lean Explore extraction pipeline")
     logger.info("Database URL: %s", database_url)
-    logger.info("Steps to run: %s", ", ".join(steps_enabled))
+    logger.info("Steps to run: %s", ", ".join(steps.enabled_names()))
 
     engine = create_async_engine(database_url, echo=verbose)
-
     try:
         await _create_database_schema(engine)
-
         if run_doc_gen4:
             await _run_doc_gen4_step(fresh=fresh)
-
-        if parse_docs:
-            await _run_extract_step(engine)
-
-        if informalize:
-            await _run_informalize_step(
-                engine,
-                informalize_model,
-                informalize_batch_size,
-                informalize_max_concurrent,
-                informalize_limit,
-            )
-
-        if embeddings:
-            await _run_embeddings_step(
-                engine,
-                embedding_model,
-                embedding_batch_size,
-                embedding_limit,
-                embedding_max_seq_length,
-                embedding_server_url=embedding_server_url,
-            )
-
-        if index:
-            await _run_index_step(engine, extraction_path)
-
+        await _run_steps(
+            engine,
+            extraction_path,
+            steps,
+            InformalizeSettings(
+                model=informalize_model,
+                batch_size=informalize_batch_size,
+                max_concurrent=informalize_max_concurrent,
+                limit=informalize_limit,
+            ),
+            EmbeddingSettings(
+                model_name=embedding_model,
+                batch_size=embedding_batch_size,
+                limit=embedding_limit,
+                max_seq_length=embedding_max_seq_length,
+                server_url=embedding_server_url,
+            ),
+        )
         logger.info("Pipeline completed successfully!")
-
     finally:
         await engine.dispose()
 
@@ -321,49 +469,18 @@ def main(
     Extraction creates timestamped directories (YYYYMMDD_HHMMSS format).
     Subsequent steps (informalize, embeddings, index) use the latest extraction.
     """
-    # Determine if any flags were explicitly set (including --run-doc-gen4)
-    step_flags = [run_doc_gen4, parse_docs, informalize, embeddings, index]
-    any_flag_explicitly_set = run_doc_gen4 or any(
-        flag is not None for flag in step_flags[1:]
-    )
-
-    # If no flags were explicitly set, run all pipeline steps by default
-    # Otherwise, only run what was explicitly requested
-    if not any_flag_explicitly_set:
-        parse_docs = informalize = embeddings = index = True
-    else:
-        parse_docs = parse_docs if parse_docs is not None else False
-        informalize = informalize if informalize is not None else False
-        embeddings = embeddings if embeddings is not None else False
-        index = index if index is not None else False
-
-    # Determine extraction directory
-    if parse_docs:
-        # Create new timestamped directory for fresh extraction
-        extraction_path = Config.create_timestamped_extraction_path()
-        logger.info("Created new extraction directory: %s", extraction_path)
-    else:
-        # Use latest existing extraction for subsequent steps
-        extraction_path = Config.get_latest_extraction_path()
-        if extraction_path is None:
-            raise click.ClickException(
-                "No existing extraction found. Run with --parse-docs first."
-            )
-        logger.info("Using existing extraction: %s", extraction_path)
-
-    database_path = extraction_path / "lean_explore.db"
-    database_url = f"sqlite+aiosqlite:///{database_path}"
-
+    steps = resolve_steps(run_doc_gen4, parse_docs, informalize, embeddings, index)
+    extraction_path = resolve_extraction_path(create_new=steps.parse_docs)
     asyncio.run(
         run_pipeline(
-            database_url=database_url,
+            database_url=database_url_for(extraction_path),
             extraction_path=extraction_path,
             run_doc_gen4=run_doc_gen4,
             fresh=fresh,
-            parse_docs=parse_docs,
-            informalize=informalize,
-            embeddings=embeddings,
-            index=index,
+            parse_docs=steps.parse_docs,
+            informalize=steps.informalize,
+            embeddings=steps.embeddings,
+            index=steps.index,
             informalize_model=informalize_model,
             informalize_max_concurrent=informalize_max_concurrent,
             informalize_limit=informalize_limit,
