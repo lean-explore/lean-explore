@@ -23,6 +23,7 @@ class SearchSummaryResponseDict(TypedDict, total=False):
     results: list[SearchResultSummaryDict]
     count: int
     processing_time_ms: int | None
+    feedback_token: str | None
 
 
 class SearchResultDict(TypedDict, total=False):
@@ -45,6 +46,7 @@ class SearchResponseDict(TypedDict, total=False):
     results: list[SearchResultDict]
     count: int
     processing_time_ms: int | None
+    feedback_token: str | None
 
 
 class SourceCodeResultDict(TypedDict):
