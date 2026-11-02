@@ -69,15 +69,7 @@ async def _run_search(
     Returns:
         The search response from the backend.
     """
-    logger.info(
-        "MCP tool '%s' called with query: '%s', limit: %d, rerank_top: %s, "
-        "packages: %s",
-        tool_name,
-        query,
-        limit,
-        rerank_top,
-        packages,
-    )
+    logger.info("MCP search tool %s called; input omitted.", tool_name)
     return await _get_backend(ctx).search(
         query=query, limit=limit, rerank_top=rerank_top, packages=packages
     )
@@ -218,6 +210,7 @@ async def search_summary(
         ],
         count=response.count,
         processing_time_ms=response.processing_time_ms,
+        feedback_token=response.feedback_token,
     )
     return cast(
         SearchSummaryResponseDict, summary_response.model_dump(exclude_none=True)

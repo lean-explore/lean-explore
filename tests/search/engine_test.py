@@ -1,5 +1,6 @@
 """End-to-end tests for SearchEngine on a small real dataset."""
 
+import asyncio
 from collections.abc import AsyncIterator
 from pathlib import Path
 from unittest.mock import MagicMock, patch
@@ -8,6 +9,7 @@ import pytest
 
 from lean_explore.config import Config
 from lean_explore.search.engine import SearchEngine
+from lean_explore.search.trace import capture_search_trace, current_search_trace
 from tests.search.conftest import (
     FakeEmbeddingClient,
     FakeRerankerClient,
@@ -213,3 +215,60 @@ class TestConstruction:
 
         assert search_engine.embedding_client is client
         assert search_engine.reranker_client is client
+
+
+@pytest.mark.parametrize("rerank_top", [0, 5])
+async def test_trace_measures_candidates_and_scores_without_changing_results(
+    engine, rerank_top
+):
+    """Tracing preserves ranking and separates the retrieved pool from output size."""
+    options = dict(limit=2, bm25_k=20, rerank_top=rerank_top)
+    baseline = await engine.search("Nat.add", **options)
+    with capture_search_trace() as trace:
+        traced = await engine.search("Nat.add", **options)
+    assert traced == baseline
+    assert trace.completed
+    assert trace.candidate_count > len(traced)
+    assert set(trace.scores) == {result.id for result in traced}
+    scores = [trace.scores[result.id] for result in traced]
+    assert scores == sorted(scores, reverse=True)
+    assert trace.retrieval_ms >= 0
+    assert trace.reranking_ms >= 0
+    assert trace.cache_hit is False
+    assert trace.score_kind == (
+        "reranker_combined" if rerank_top else "fusion_dependency_boost"
+    )
+    if not rerank_top:
+        assert trace.reranking_ms == 0
+    assert current_search_trace() is None
+
+
+async def test_concurrent_trace_scopes_do_not_share_results(engine):
+    """Each task retains only its own result scores, even when searches interleave."""
+
+    async def search(query):
+        with capture_search_trace() as trace:
+            results = await engine.search(query, bm25_k=20, limit=1)
+        return results, trace
+
+    first, second = await asyncio.gather(search("Nat.add"), search("List.map"))
+    assert first[1] is not second[1]
+    assert set(first[1].scores) == {first[0][0].id}
+    assert set(second[1].scores) == {second[0][0].id}
+    assert first[0][0].id != second[0][0].id
+
+
+async def test_trace_empty_results_and_failure_cleanup(engine):
+    """Empty successful searches differ from failures and context always resets."""
+    with capture_search_trace() as empty:
+        assert await engine.search(" ") == []
+    assert empty.completed and empty.candidate_count == 0
+    with capture_search_trace() as outer:
+        with pytest.raises(RuntimeError), capture_search_trace() as failed:
+            with patch.object(
+                engine, "_semantic_candidates", side_effect=RuntimeError("model failed")
+            ):
+                await engine.search("Nat.add", bm25_k=20)
+        assert not failed.completed
+        assert current_search_trace() is outer
+    assert current_search_trace() is None
