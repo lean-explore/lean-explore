@@ -71,3 +71,13 @@ For questions or discussion about the project, contact Justin Asher at **justinc
 ## License
 
 By contributing, you agree that your contributions will be licensed under the Apache License 2.0.
+
+## Testing on the development website
+
+Use the `development` branch for changes being tested on dev.leanexplore.com.
+Package pushes run CI but do not publish a PyPI release or change production.
+To deploy a package change, push it first, then update
+`deploy/lean-explore-revision` in the website repository
+(`lean-explore/lean-explore-app`, branch `development`) to the full package
+commit SHA. Push that website commit to test and deploy the exact pair.
+The development website requires the shared development login.
