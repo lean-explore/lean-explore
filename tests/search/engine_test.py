@@ -116,6 +116,20 @@ class TestSearchOptions:
         assert results
         assert all(result.module.startswith(prefixes) for result in results)
 
+    @pytest.mark.parametrize("rerank_top", [25, None])
+    async def test_package_filter_with_no_matches(
+        self, engine: SearchEngine, rerank_top
+    ):
+        """A filter that excludes every candidate gives no results, not an error."""
+        results = await engine.search(
+            "prime number",
+            bm25_k=20,
+            rerank_top=rerank_top,
+            packages=["NoSuchPackage"],
+        )
+
+        assert results == []
+
     async def test_no_candidates(self, engine: SearchEngine):
         """If neither index returns candidates, the result is empty."""
         with (

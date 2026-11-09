@@ -239,6 +239,10 @@ class SearchEngine:
         candidates = [
             declarations[cid] for cid, _ in boosted[:pool_size] if cid in declarations
         ]
+        # A package filter can remove every candidate; the reranker's BM25
+        # index cannot be built over an empty set.
+        if not candidates:
+            return []
 
         if rerank:
             return await self._rerank(query, candidates, limit)
