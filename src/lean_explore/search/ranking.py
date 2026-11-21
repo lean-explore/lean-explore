@@ -2,7 +2,8 @@
 
 The engine ranks in three stages:
 
-1. Reciprocal rank fusion of the BM25 name ranking and the semantic ranking.
+1. Reciprocal rank fusion of the BM25 name ranking and the semantic ranking,
+   or a pool whose first positions are reserved for semantic candidates.
 2. A dependency boost: candidates that many other top candidates depend on
    (foundational definitions) move up.
 3. Optional reranking, combining cross-encoder scores with BM25 over the
@@ -12,6 +13,7 @@ Every function here is pure; the engine supplies the candidates and scores.
 """
 
 import json
+import os
 from collections.abc import Iterable
 from dataclasses import dataclass
 
@@ -44,23 +46,89 @@ class RerankWeights:
 DEFAULT_RERANK_WEIGHTS = RerankWeights()
 
 
+@dataclass(frozen=True)
+class FusionSettings:
+    """How the BM25 name ranking and the semantic ranking form one candidate list.
+
+    The defaults give plain reciprocal rank fusion, 1/name_rank + 1/semantic_rank.
+    """
+
+    rrf_constant: float = 0.0
+    """Added to every rank before its reciprocal is taken."""
+    semantic_weight: float = 1.0
+    """Multiplier of the semantic term."""
+    semantic_share: float = 0.0
+    """If positive, this share of the dependency-boost pool is filled with the top
+    semantic candidates first, then name candidates, then the remaining semantic
+    ones; rank fusion is not used."""
+
+    def __post_init__(self) -> None:
+        """Reject settings that cannot order candidates."""
+        if self.rrf_constant < 0 or self.semantic_weight < 0:
+            raise ValueError("rrf_constant and semantic_weight must be non-negative")
+        if not 0.0 <= self.semantic_share <= 1.0:
+            raise ValueError("semantic_share must be between 0 and 1")
+
+    @classmethod
+    def from_env(cls) -> "FusionSettings":
+        """Read overrides of the defaults from the environment.
+
+        Uses LEAN_EXPLORE_RRF_CONSTANT, LEAN_EXPLORE_SEMANTIC_WEIGHT and
+        LEAN_EXPLORE_SEMANTIC_SHARE when they are set.
+        """
+        defaults = cls()
+        return cls(
+            rrf_constant=_env_float("LEAN_EXPLORE_RRF_CONSTANT", defaults.rrf_constant),
+            semantic_weight=_env_float(
+                "LEAN_EXPLORE_SEMANTIC_WEIGHT", defaults.semantic_weight
+            ),
+            semantic_share=_env_float(
+                "LEAN_EXPLORE_SEMANTIC_SHARE", defaults.semantic_share
+            ),
+        )
+
+
+def _env_float(name: str, default: float) -> float:
+    """Return a float environment variable, or the default if it is unset."""
+    value = os.getenv(name)
+    if value is None or not value.strip():
+        return default
+    try:
+        return float(value)
+    except ValueError as error:
+        raise ValueError(f"{name} must be a number, got {value!r}") from error
+
+
 def _ranks(scores_by_id: dict[int, float]) -> dict[int, int]:
     """Map each id to its 1-based rank by descending score."""
-    ordered = sorted(scores_by_id.items(), key=lambda item: item[1], reverse=True)
-    return {declaration_id: rank for rank, (declaration_id, _) in enumerate(ordered, 1)}
+    return {
+        declaration_id: rank
+        for rank, declaration_id in enumerate(_order(scores_by_id), 1)
+    }
+
+
+def _order(scores_by_id: dict[int, float]) -> list[int]:
+    """Return the ids by descending score, keeping insertion order on ties."""
+    return sorted(scores_by_id, key=scores_by_id.__getitem__, reverse=True)
 
 
 def fuse_rankings(
-    name_scores: dict[int, float], semantic_scores: dict[int, float]
+    name_scores: dict[int, float],
+    semantic_scores: dict[int, float],
+    rrf_constant: float = 0.0,
+    semantic_weight: float = 1.0,
 ) -> list[tuple[int, float]]:
     """Combine two candidate rankings with reciprocal rank fusion.
 
-    Each candidate scores 1/name_rank + 1/semantic_rank. A candidate missing
-    from one ranking takes the rank just past that ranking's end.
+    Each candidate scores 1/(c + name_rank) + w/(c + semantic_rank), with
+    c = rrf_constant and w = semantic_weight. A candidate missing from one
+    ranking takes the rank just past that ranking's end.
 
     Args:
         name_scores: Map of declaration id to BM25 name score.
         semantic_scores: Map of declaration id to semantic similarity.
+        rrf_constant: Constant added to every rank.
+        semantic_weight: Multiplier of the semantic term.
 
     Returns:
         (declaration_id, fused_score) pairs sorted by descending score.
@@ -74,13 +142,74 @@ def fuse_rankings(
     fused = [
         (
             declaration_id,
-            1.0 / name_ranks.get(declaration_id, missing_name_rank)
-            + 1.0 / semantic_ranks.get(declaration_id, missing_semantic_rank),
+            1.0 / (rrf_constant + name_ranks.get(declaration_id, missing_name_rank))
+            + semantic_weight
+            / (
+                rrf_constant + semantic_ranks.get(declaration_id, missing_semantic_rank)
+            ),
         )
         for declaration_id in candidate_ids
     ]
     fused.sort(key=lambda item: item[1], reverse=True)
     return fused
+
+
+def reserve_semantic_slots(
+    name_scores: dict[int, float],
+    semantic_scores: dict[int, float],
+    pool_size: int,
+    share: float,
+) -> list[tuple[int, float]]:
+    """Order candidates with the first positions reserved for semantic ones.
+
+    The first round(share * pool_size) positions hold the top semantic
+    candidates in semantic order. Name candidates follow in name order, then
+    the remaining semantic candidates, each id once.
+
+    Args:
+        name_scores: Map of declaration id to BM25 name score.
+        semantic_scores: Map of declaration id to semantic similarity.
+        pool_size: Size of the pool that the reserved share refers to.
+        share: Share of the pool reserved for semantic candidates.
+
+    Returns:
+        (declaration_id, 1/position) pairs, best first, like fuse_rankings.
+    """
+    semantic_order = _order(semantic_scores)
+    reserved = semantic_order[: round(share * pool_size)]
+    order = list(dict.fromkeys(reserved + _order(name_scores) + semantic_order))
+    return [
+        (declaration_id, 1.0 / rank) for rank, declaration_id in enumerate(order, 1)
+    ]
+
+
+def fuse_candidates(
+    name_scores: dict[int, float],
+    semantic_scores: dict[int, float],
+    settings: FusionSettings,
+    pool_size: int = 0,
+) -> list[tuple[int, float]]:
+    """Fuse the two rankings as the settings say.
+
+    Args:
+        name_scores: Map of declaration id to BM25 name score.
+        semantic_scores: Map of declaration id to semantic similarity.
+        settings: Fusion settings.
+        pool_size: Pool size that a reserved semantic share refers to.
+
+    Returns:
+        (declaration_id, score) pairs, best first.
+    """
+    if settings.semantic_share > 0:
+        return reserve_semantic_slots(
+            name_scores, semantic_scores, pool_size, settings.semantic_share
+        )
+    return fuse_rankings(
+        name_scores,
+        semantic_scores,
+        rrf_constant=settings.rrf_constant,
+        semantic_weight=settings.semantic_weight,
+    )
 
 
 def parse_dependencies(declaration: Declaration) -> list[str]:

@@ -6,14 +6,17 @@ import pytest
 
 from lean_explore.models import Declaration
 from lean_explore.search.ranking import (
+    FusionSettings,
     RerankWeights,
     apply_dependency_boost,
     combine_rerank_scores,
     count_dependents,
+    fuse_candidates,
     fuse_rankings,
     informal_bm25_scores,
     parse_dependencies,
     rerank_document,
+    reserve_semantic_slots,
 )
 
 
@@ -63,6 +66,100 @@ class TestFuseRankings:
     def test_empty(self):
         """No candidates yields no results."""
         assert fuse_rankings({}, {}) == []
+
+    def test_constant_and_semantic_weight(self):
+        """Each term is weight / (constant + rank)."""
+        fused = dict(
+            fuse_rankings(
+                {1: 9.0, 2: 5.0},
+                {2: 0.9, 1: 0.1},
+                rrf_constant=60,
+                semantic_weight=2.0,
+            )
+        )
+
+        assert fused[1] == pytest.approx(1 / 61 + 2 / 62)
+        assert fused[2] == pytest.approx(1 / 62 + 2 / 61)
+
+    def test_semantic_weight_favours_semantic_leader(self):
+        """With a heavier semantic term the semantic leader wins a tie."""
+        name_scores = {1: 9.0, 2: 5.0}
+        semantic_scores = {2: 0.9, 1: 0.1}
+
+        plain = fuse_rankings(name_scores, semantic_scores, rrf_constant=60)
+        weighted = fuse_rankings(
+            name_scores, semantic_scores, rrf_constant=60, semantic_weight=2.0
+        )
+
+        assert plain[0][1] == pytest.approx(plain[1][1])
+        assert weighted[0][0] == 2
+
+
+class TestSemanticSlots:
+    """Tests for pools with positions reserved for semantic candidates."""
+
+    def test_reserved_semantic_then_names_then_rest(self):
+        """Reserved semantic ids come first, then name order, then other ids."""
+        name_scores = {10: 3.0, 11: 2.0, 1: 1.0}
+        semantic_scores = {1: 0.9, 2: 0.8, 3: 0.7, 4: 0.6}
+
+        pool = reserve_semantic_slots(name_scores, semantic_scores, 4, 0.5)
+
+        assert [cid for cid, _ in pool] == [1, 2, 10, 11, 3, 4]
+        assert [score for _, score in pool] == pytest.approx(
+            [1 / rank for rank in range(1, 7)]
+        )
+
+    def test_zero_share_keeps_name_order_first(self):
+        """With no reserved share, name candidates lead."""
+        pool = reserve_semantic_slots({5: 1.0}, {6: 1.0}, 10, 0.0)
+
+        assert [cid for cid, _ in pool] == [5, 6]
+
+    def test_fuse_candidates_dispatches_on_share(self):
+        """A positive share selects slots; otherwise rank fusion is used."""
+        name_scores = {1: 2.0, 2: 1.0}
+        semantic_scores = {2: 0.9, 3: 0.5}
+
+        slots = fuse_candidates(
+            name_scores, semantic_scores, FusionSettings(semantic_share=1.0), 2
+        )
+        fused = fuse_candidates(name_scores, semantic_scores, FusionSettings())
+
+        assert [cid for cid, _ in slots] == [2, 3, 1]
+        assert fused == fuse_rankings(name_scores, semantic_scores)
+
+
+class TestFusionSettings:
+    """Tests for fusion settings and their environment overrides."""
+
+    def test_defaults_are_plain_rank_fusion(self):
+        """The defaults reproduce 1/name_rank + 1/semantic_rank."""
+        assert FusionSettings() == FusionSettings(0.0, 1.0, 0.0)
+
+    @pytest.mark.parametrize(
+        "kwargs",
+        [{"rrf_constant": -1}, {"semantic_weight": -1}, {"semantic_share": 1.5}],
+    )
+    def test_invalid_values_rejected(self, kwargs):
+        """Negative constants or weights and shares outside [0, 1] fail."""
+        with pytest.raises(ValueError):
+            FusionSettings(**kwargs)
+
+    def test_from_env(self, monkeypatch):
+        """Set variables override the defaults; unset ones keep them."""
+        monkeypatch.setenv("LEAN_EXPLORE_RRF_CONSTANT", "60")
+        monkeypatch.setenv("LEAN_EXPLORE_SEMANTIC_WEIGHT", "2")
+        monkeypatch.delenv("LEAN_EXPLORE_SEMANTIC_SHARE", raising=False)
+
+        assert FusionSettings.from_env() == FusionSettings(60.0, 2.0, 0.0)
+
+    def test_from_env_rejects_text(self, monkeypatch):
+        """A non-numeric value names the variable in the error."""
+        monkeypatch.setenv("LEAN_EXPLORE_SEMANTIC_SHARE", "most")
+
+        with pytest.raises(ValueError, match="LEAN_EXPLORE_SEMANTIC_SHARE"):
+            FusionSettings.from_env()
 
 
 class TestDependencies:

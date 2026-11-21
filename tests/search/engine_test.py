@@ -8,6 +8,7 @@ import pytest
 
 from lean_explore.config import Config
 from lean_explore.search.engine import SearchEngine
+from lean_explore.search.ranking import FusionSettings
 from tests.search.conftest import (
     FakeEmbeddingClient,
     FakeRerankerClient,
@@ -212,6 +213,58 @@ class TestConstruction:
         reranker_class.assert_called_once_with(
             model_name="rerank-model", max_length=256
         )
+
+    def test_first_stage_settings_from_arguments(self, search_data: SearchData):
+        """Explicit fusion and nprobe settings reach the engine and indexes."""
+        fusion = FusionSettings(rrf_constant=60, semantic_weight=2.0)
+        search_engine = SearchEngine(
+            db_url=search_data.db_url,
+            data_directory=search_data.directory,
+            fusion=fusion,
+            faiss_nprobe=0,
+        )
+
+        assert search_engine.fusion is fusion
+        assert search_engine.indexes.faiss_nprobe == 0
+
+    def test_first_stage_settings_from_environment(
+        self, search_data: SearchData, monkeypatch
+    ):
+        """Without arguments the environment variables apply."""
+        monkeypatch.setenv("LEAN_EXPLORE_SEMANTIC_SHARE", "0.9")
+        monkeypatch.setenv("LEAN_EXPLORE_FAISS_NPROBE", "128")
+        search_engine = SearchEngine(
+            db_url=search_data.db_url, data_directory=search_data.directory
+        )
+
+        assert search_engine.fusion.semantic_share == 0.9
+        assert search_engine.indexes.faiss_nprobe == 128
+
+    @pytest.mark.parametrize(
+        "fusion",
+        [
+            FusionSettings(rrf_constant=60, semantic_weight=2.0),
+            FusionSettings(0, 1, 0.9),
+        ],
+    )
+    async def test_search_with_other_fusion(
+        self, search_data: SearchData, fusion: FusionSettings
+    ):
+        """Both pool options return results for a natural-language query."""
+        search_engine = SearchEngine(
+            db_url=search_data.db_url,
+            embedding_client=FakeEmbeddingClient(),
+            reranker_client=FakeRerankerClient(),
+            data_directory=search_data.directory,
+            fusion=fusion,
+            faiss_nprobe=0,
+        )
+        try:
+            results = await search_engine.search("prime number", bm25_k=20)
+        finally:
+            await search_engine.engine.dispose()
+
+        assert results
 
     def test_faiss_accessors_delegate_to_indexes(self, engine: SearchEngine):
         """Legacy FAISS accessors expose the loaded index and id map."""

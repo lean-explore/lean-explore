@@ -13,6 +13,7 @@ loads torch first).
 
 import json
 import logging
+import os
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -35,6 +36,31 @@ BM25_IDS_MAP_FILENAME = "bm25_ids_map.json"
 FAISS_NPROBE = 64
 """Number of inverted lists probed per query when the index is an IVF index."""
 
+FAISS_PROBE_ALL = 0
+"""nprobe value that searches every inverted list, which is an exact search."""
+
+
+def faiss_nprobe_from_env(default: int = FAISS_NPROBE) -> int:
+    """Read LEAN_EXPLORE_FAISS_NPROBE, where 0 means every inverted list.
+
+    Args:
+        default: Value used when the variable is unset.
+
+    Returns:
+        The number of inverted lists to probe.
+
+    Raises:
+        ValueError: If the variable is not a non-negative integer.
+    """
+    value = os.getenv("LEAN_EXPLORE_FAISS_NPROBE")
+    if value is None or not value.strip():
+        return default
+    if not value.strip().isdigit():
+        raise ValueError(
+            f"LEAN_EXPLORE_FAISS_NPROBE must be a non-negative integer, got {value!r}"
+        )
+    return int(value)
+
 
 class SearchIndexes:
     """Lazily loaded BM25 name indices and FAISS informalization index."""
@@ -44,6 +70,7 @@ class SearchIndexes:
         data_directory: Path,
         faiss_index_path: Path | None = None,
         faiss_ids_map_path: Path | None = None,
+        faiss_nprobe: int = FAISS_NPROBE,
     ):
         """Locate the index files and check that they exist.
 
@@ -51,10 +78,16 @@ class SearchIndexes:
             data_directory: Directory holding the index files.
             faiss_index_path: Override for the FAISS index file.
             faiss_ids_map_path: Override for the FAISS id mapping file.
+            faiss_nprobe: Inverted lists probed per query on an IVF index;
+                FAISS_PROBE_ALL (0) searches every list.
 
         Raises:
             FileNotFoundError: If any required index file is missing.
+            ValueError: If faiss_nprobe is negative.
         """
+        if faiss_nprobe < 0:
+            raise ValueError("faiss_nprobe must be non-negative")
+        self.faiss_nprobe = faiss_nprobe
         self.faiss_index_path = faiss_index_path or (
             data_directory / FAISS_INDEX_FILENAME
         )
@@ -162,7 +195,7 @@ class SearchIndexes:
 
         index = self.faiss_index
         if hasattr(index, "nprobe"):
-            index.nprobe = FAISS_NPROBE
+            index.nprobe = self.faiss_nprobe or getattr(index, "nlist")
         similarities, positions = index.search(query_vector, k)
 
         id_map = self.faiss_id_map
