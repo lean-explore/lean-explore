@@ -8,7 +8,8 @@ link format.
 
 The parser does not elaborate, so the rows have no dependencies, anonymous
 instances are skipped because their names come from the elaborated type, and
-names that attributes such as ``to_additive`` derive by rule are guessed.
+names that attributes such as ``to_additive`` derive by rule are left out
+unless requested, because they are guesses.
 Install the parser with ``pip install ./parser/crates/lean-source-py``.
 """
 
@@ -184,7 +185,7 @@ def parse_package_sources(
     source_root: Path,
     link_base: str,
     include_module: Callable[[str], bool],
-    include_approximate: bool = True,
+    include_approximate: bool = False,
 ) -> list[Declaration]:
     """Parse a package checkout into declaration rows.
 
@@ -192,8 +193,9 @@ def parse_package_sources(
         source_root: Root of the package's repository checkout.
         link_base: URL prefix for source links, from ``source_link_base``.
         include_module: Predicate selecting the package's modules.
-        include_approximate: Keep names that a naming rule derived, such as
-            ``to_additive`` translations without a written name.
+        include_approximate: Also keep names that a naming rule derived, such
+            as ``to_additive`` translations without a written name. They are
+            guesses and can name declarations that do not exist.
 
     Returns:
         One row per stored declaration name, in file order.
