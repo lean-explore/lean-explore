@@ -44,13 +44,16 @@ jobs:
         run: cargo clippy --workspace --all-targets -- -D warnings
 
       - name: Test
-        run: cargo test --workspace
+        run: |
+          cargo test --workspace
+          python -m unittest discover -s validation/tests
 
       - name: Build and import the Python bindings
         run: |
           pip install "maturin>=1.7,<2"
           maturin build --release -m crates/lean-source-py/Cargo.toml -o dist
           pip install dist/*.whl
+          python -m unittest discover -s crates/lean-source-py/tests
           python -c "import lean_source_parser as p; d = p.parse('theorem t : True := trivial'); assert d[0]['name'] == 't', d"
 
       - name: Test source extraction with the bindings

@@ -1,0 +1,962 @@
+{
+    "schema":  "flt-original-signature-errors-v1",
+    "corpus_commit":  "6e837e75355538c7f80bab5b956861e86c4eacc2",
+    "parser_base_commit":  "7f9c98c2c53474aaaece8892fa781a789596f01d",
+    "reference":  "Anthropic tools/docs-site/gen/extract.py",
+    "error_count":  56,
+    "resolution":  "All 29511 reference main theorems have exact names, kinds, and signatures in the corrected export.",
+    "errors":  [
+                   {
+                       "file":  "Theorems/Thm_AlgebraicCurve_abs_prox_evalVec_sub_prox_le_of_coordinate_change.lean",
+                       "name":  "AlgebraicCurve.abs_prox_evalVec_sub_prox_le_of_coordinate_change",
+                       "reason":  "truncated",
+                       "expected_signature_characters":  982,
+                       "baseline_signature_characters":  761,
+                       "first_difference_character":  761,
+                       "baseline_signature_span":  [
+                                                       260,
+                                                       10,
+                                                       0,
+                                                       1090,
+                                                       20,
+                                                       82
+                                                   ],
+                       "status":  "fixed"
+                   },
+                   {
+                       "file":  "Theorems/Thm_AlgebraicCurve_abs_prox_mulVec_mulVec_sub_prox_le_of_abv_le.lean",
+                       "name":  "AlgebraicCurve.abs_prox_mulVec_mulVec_sub_prox_le_of_abv_le",
+                       "reason":  "truncated",
+                       "expected_signature_characters":  456,
+                       "baseline_signature_characters":  387,
+                       "first_difference_character":  387,
+                       "baseline_signature_span":  [
+                                                       201,
+                                                       9,
+                                                       0,
+                                                       626,
+                                                       13,
+                                                       88
+                                                   ],
+                       "status":  "fixed"
+                   },
+                   {
+                       "file":  "Theorems/Thm_AutomorphicForm_exists_continuousLinearEquiv_forall_norm_archEval_resolvent_eq_abs_fst_add_of_isReal.lean",
+                       "name":  "AutomorphicForm.exists_continuousLinearEquiv_forall_norm_archEval_resolvent_eq_abs_fst_add_of_isReal",
+                       "reason":  "truncated",
+                       "expected_signature_characters":  1971,
+                       "baseline_signature_characters":  1668,
+                       "first_difference_character":  1668,
+                       "baseline_signature_span":  [
+                                                       928,
+                                                       23,
+                                                       0,
+                                                       2711,
+                                                       40,
+                                                       89
+                                                   ],
+                       "status":  "fixed"
+                   },
+                   {
+                       "file":  "Theorems/Thm_AutomorphicForm_exists_continuousLinearEquiv_norm_archEval_resolvent_eq_norm_conj_add_conj_mul_of_isComplex_of_isReal_comap.lean",
+                       "name":  "AutomorphicForm.exists_continuousLinearEquiv_norm_archEval_resolvent_eq_norm_conj_add_conj_mul_of_isComplex_of_isReal_comap",
+                       "reason":  "truncated",
+                       "expected_signature_characters":  2724,
+                       "baseline_signature_characters":  2603,
+                       "first_difference_character":  2603,
+                       "baseline_signature_span":  [
+                                                       951,
+                                                       23,
+                                                       0,
+                                                       3704,
+                                                       46,
+                                                       72
+                                                   ],
+                       "status":  "fixed"
+                   },
+                   {
+                       "file":  "Theorems/Thm_AutomorphicForm_exists_forall_abs_log_adelicHeight_mul_adelicHeight_adelicWeyl_le_mul_prod_pow_log_measure_of_doubleCoset_apply_ne_zero.lean",
+                       "name":  "AutomorphicForm.exists_forall_abs_log_adelicHeight_mul_adelicHeight_adelicWeyl_le_mul_prod_pow_log_measure_of_doubleCoset_apply_ne_zero",
+                       "reason":  "truncated",
+                       "expected_signature_characters":  2143,
+                       "baseline_signature_characters":  1682,
+                       "first_difference_character":  1682,
+                       "baseline_signature_span":  [
+                                                       2124,
+                                                       33,
+                                                       0,
+                                                       3949,
+                                                       53,
+                                                       103
+                                                   ],
+                       "status":  "fixed"
+                   },
+                   {
+                       "file":  "Theorems/Thm_AutomorphicForm_ideleNorm_det_map_genuineRingEquiv_eq_abs_algebraNorm_det_tensorArch_mul_prod_norm_algebraNorm_det_tensorPlace.lean",
+                       "name":  "AutomorphicForm.ideleNorm_det_map_genuineRingEquiv_eq_abs_algebraNorm_det_tensorArch_mul_prod_norm_algebraNorm_det_tensorPlace",
+                       "reason":  "truncated",
+                       "expected_signature_characters":  1495,
+                       "baseline_signature_characters":  1092,
+                       "first_difference_character":  1092,
+                       "baseline_signature_span":  [
+                                                       1080,
+                                                       24,
+                                                       0,
+                                                       2205,
+                                                       39,
+                                                       73
+                                                   ],
+                       "status":  "fixed"
+                   },
+                   {
+                       "file":  "Theorems/Thm_LanglandsTunnell_CubicInduction_archRoot_iota_archRealGLAt_and_dual.lean",
+                       "name":  "LanglandsTunnell.CubicInduction.archRoot_iota_archRealGLAt_and_dual",
+                       "reason":  "truncated",
+                       "expected_signature_characters":  1118,
+                       "baseline_signature_characters":  221,
+                       "first_difference_character":  221,
+                       "baseline_signature_span":  [
+                                                       2472,
+                                                       45,
+                                                       0,
+                                                       2710,
+                                                       46,
+                                                       102
+                                                   ],
+                       "status":  "fixed"
+                   },
+                   {
+                       "file":  "Theorems/Thm_LanglandsTunnell_CubicInduction_forall_pow_mul_norm_archZeta30_jacquetVector3_le.lean",
+                       "name":  "LanglandsTunnell.CubicInduction.forall_pow_mul_norm_archZeta30_jacquetVector3_le",
+                       "reason":  "truncated",
+                       "expected_signature_characters":  1424,
+                       "baseline_signature_characters":  1295,
+                       "first_difference_character":  1295,
+                       "baseline_signature_span":  [
+                                                       712,
+                                                       14,
+                                                       0,
+                                                       2189,
+                                                       34,
+                                                       62
+                                                   ],
+                       "status":  "fixed"
+                   },
+                   {
+                       "file":  "Theorems/Thm_LanglandsTunnell_CubicInduction_forall_pow_mul_norm_archZetaDual31_jacquetVector3_le.lean",
+                       "name":  "LanglandsTunnell.CubicInduction.forall_pow_mul_norm_archZetaDual31_jacquetVector3_le",
+                       "reason":  "truncated",
+                       "expected_signature_characters":  1682,
+                       "baseline_signature_characters":  1533,
+                       "first_difference_character":  1533,
+                       "baseline_signature_span":  [
+                                                       716,
+                                                       14,
+                                                       0,
+                                                       2444,
+                                                       37,
+                                                       62
+                                                   ],
+                       "status":  "fixed"
+                   },
+                   {
+                       "file":  "Theorems/Thm_LanglandsTunnell_RankinSelberg_norm_archWhittaker_upperUnit_mul_rowIsometry.lean",
+                       "name":  "LanglandsTunnell.RankinSelberg.norm_archWhittaker_upperUnit_mul_rowIsometry",
+                       "reason":  "truncated",
+                       "expected_signature_characters":  1058,
+                       "baseline_signature_characters":  941,
+                       "first_difference_character":  941,
+                       "baseline_signature_span":  [
+                                                       2554,
+                                                       47,
+                                                       0,
+                                                       3623,
+                                                       61,
+                                                       44
+                                                   ],
+                       "status":  "fixed"
+                   },
+                   {
+                       "file":  "Theorems/Thm_ModularCurve_JZero_chordLine_core_of_prime_of_five_le.lean",
+                       "name":  "ModularCurve.JZero.chordLine_core_of_prime_of_five_le",
+                       "reason":  "truncated",
+                       "expected_signature_characters":  922,
+                       "baseline_signature_characters":  417,
+                       "first_difference_character":  417,
+                       "baseline_signature_span":  [
+                                                       28876,
+                                                       26,
+                                                       0,
+                                                       29323,
+                                                       31,
+                                                       77
+                                                   ],
+                       "status":  "fixed"
+                   },
+                   {
+                       "file":  "Theorems/Thm_ModularCurve_JZero_chordLine_section_ledger_of_prime_of_five_le.lean",
+                       "name":  "ModularCurve.JZero.chordLine_section_ledger_of_prime_of_five_le",
+                       "reason":  "truncated",
+                       "expected_signature_characters":  1148,
+                       "baseline_signature_characters":  560,
+                       "first_difference_character":  560,
+                       "baseline_signature_span":  [
+                                                       28886,
+                                                       26,
+                                                       0,
+                                                       29500,
+                                                       34,
+                                                       38
+                                                   ],
+                       "status":  "fixed"
+                   },
+                   {
+                       "file":  "Theorems/Thm_ModularCurve_JZero_chowSide_arch_embedding.lean",
+                       "name":  "ModularCurve.JZero.chowSide_arch_embedding",
+                       "reason":  "truncated",
+                       "expected_signature_characters":  1361,
+                       "baseline_signature_characters":  824,
+                       "first_difference_character":  824,
+                       "baseline_signature_span":  [
+                                                       10682,
+                                                       17,
+                                                       0,
+                                                       11583,
+                                                       29,
+                                                       14
+                                                   ],
+                       "status":  "fixed"
+                   },
+                   {
+                       "file":  "Theorems/Thm_ModularCurve_JZero_chowSide_arch_embedding_off_support.lean",
+                       "name":  "ModularCurve.JZero.chowSide_arch_embedding_off_support",
+                       "reason":  "truncated",
+                       "expected_signature_characters":  1020,
+                       "baseline_signature_characters":  838,
+                       "first_difference_character":  838,
+                       "baseline_signature_span":  [
+                                                       10405,
+                                                       17,
+                                                       0,
+                                                       11326,
+                                                       28,
+                                                       86
+                                                   ],
+                       "status":  "fixed"
+                   },
+                   {
+                       "file":  "Theorems/Thm_ModularCurve_JZero_chowSide_cusp_of_off_support.lean",
+                       "name":  "ModularCurve.JZero.chowSide_cusp_of_off_support",
+                       "reason":  "truncated",
+                       "expected_signature_characters":  1041,
+                       "baseline_signature_characters":  770,
+                       "first_difference_character":  770,
+                       "baseline_signature_span":  [
+                                                       9596,
+                                                       17,
+                                                       0,
+                                                       10444,
+                                                       28,
+                                                       66
+                                                   ],
+                       "status":  "fixed"
+                   },
+                   {
+                       "file":  "Theorems/Thm_ModularCurve_JZero_exists_abs_absLogHeight_regVal_sub_pointHt_add_pointHt_le.lean",
+                       "name":  "ModularCurve.JZero.exists_abs_absLogHeight_regVal_sub_pointHt_add_pointHt_le",
+                       "reason":  "truncated",
+                       "expected_signature_characters":  1497,
+                       "baseline_signature_characters":  1226,
+                       "first_difference_character":  1226,
+                       "baseline_signature_span":  [
+                                                       9238,
+                                                       17,
+                                                       0,
+                                                       10545,
+                                                       30,
+                                                       68
+                                                   ],
+                       "status":  "fixed"
+                   },
+                   {
+                       "file":  "Theorems/Thm_ModularCurve_JZero_exists_abs_pairHt_sub_pointHt_div_le.lean",
+                       "name":  "ModularCurve.JZero.exists_abs_pairHt_sub_pointHt_div_le",
+                       "reason":  "truncated",
+                       "expected_signature_characters":  440,
+                       "baseline_signature_characters":  360,
+                       "first_difference_character":  360,
+                       "baseline_signature_span":  [
+                                                       9129,
+                                                       15,
+                                                       0,
+                                                       9522,
+                                                       20,
+                                                       35
+                                                   ],
+                       "status":  "fixed"
+                   },
+                   {
+                       "file":  "Theorems/Thm_ModularCurve_JZero_exists_abs_pointHt_sub_add_pointHt_le.lean",
+                       "name":  "ModularCurve.JZero.exists_abs_pointHt_sub_add_pointHt_le",
+                       "reason":  "truncated",
+                       "expected_signature_characters":  1192,
+                       "baseline_signature_characters":  1091,
+                       "first_difference_character":  1091,
+                       "baseline_signature_span":  [
+                                                       9162,
+                                                       14,
+                                                       0,
+                                                       10317,
+                                                       24,
+                                                       103
+                                                   ],
+                       "status":  "fixed"
+                   },
+                   {
+                       "file":  "Theorems/Thm_ModularCurve_JZero_exists_abs_pointHt_sub_pointHt_le_mul_add_of_degree_eq.lean",
+                       "name":  "ModularCurve.JZero.exists_abs_pointHt_sub_pointHt_le_mul_add_of_degree_eq",
+                       "reason":  "truncated",
+                       "expected_signature_characters":  950,
+                       "baseline_signature_characters":  849,
+                       "first_difference_character":  849,
+                       "baseline_signature_span":  [
+                                                       9210,
+                                                       16,
+                                                       0,
+                                                       10127,
+                                                       24,
+                                                       120
+                                                   ],
+                       "status":  "fixed"
+                   },
+                   {
+                       "file":  "Theorems/Thm_ModularCurve_JZero_exists_abs_pointHt_sub_pointHt_le_of_forall_exists_ord_add_eq_zero.lean",
+                       "name":  "ModularCurve.JZero.exists_abs_pointHt_sub_pointHt_le_of_forall_exists_ord_add_eq_zero",
+                       "reason":  "truncated",
+                       "expected_signature_characters":  966,
+                       "baseline_signature_characters":  898,
+                       "first_difference_character":  898,
+                       "baseline_signature_span":  [
+                                                       9191,
+                                                       14,
+                                                       0,
+                                                       10145,
+                                                       23,
+                                                       103
+                                                   ],
+                       "status":  "fixed"
+                   },
+                   {
+                       "file":  "Theorems/Thm_ModularCurve_JZero_exists_hyperplaneSection_defect_le.lean",
+                       "name":  "ModularCurve.JZero.exists_hyperplaneSection_defect_le",
+                       "reason":  "truncated",
+                       "expected_signature_characters":  1646,
+                       "baseline_signature_characters":  816,
+                       "first_difference_character":  816,
+                       "baseline_signature_span":  [
+                                                       9409,
+                                                       19,
+                                                       0,
+                                                       10302,
+                                                       28,
+                                                       66
+                                                   ],
+                       "status":  "fixed"
+                   },
+                   {
+                       "file":  "Theorems/Thm_ModularCurve_JZero_exists_seq_tendsto_cuspInftyBar.lean",
+                       "name":  "ModularCurve.JZero.exists_seq_tendsto_cuspInftyBar",
+                       "reason":  "truncated",
+                       "expected_signature_characters":  1269,
+                       "baseline_signature_characters":  607,
+                       "first_difference_character":  607,
+                       "baseline_signature_span":  [
+                                                       9327,
+                                                       17,
+                                                       0,
+                                                       9991,
+                                                       25,
+                                                       81
+                                                   ],
+                       "status":  "fixed"
+                   },
+                   {
+                       "file":  "Theorems/Thm_ModularCurve_JZero_hyperplaneSection_cocycle_bounded.lean",
+                       "name":  "ModularCurve.JZero.hyperplaneSection_cocycle_bounded",
+                       "reason":  "truncated",
+                       "expected_signature_characters":  1780,
+                       "baseline_signature_characters":  954,
+                       "first_difference_character":  954,
+                       "baseline_signature_span":  [
+                                                       9329,
+                                                       17,
+                                                       0,
+                                                       10374,
+                                                       31,
+                                                       66
+                                                   ],
+                       "status":  "fixed"
+                   },
+                   {
+                       "file":  "Theorems/Thm_ModularCurve_JZero_jensen_arch.lean",
+                       "name":  "ModularCurve.JZero.jensen_arch",
+                       "reason":  "truncated",
+                       "expected_signature_characters":  1525,
+                       "baseline_signature_characters":  948,
+                       "first_difference_character":  948,
+                       "baseline_signature_span":  [
+                                                       10675,
+                                                       16,
+                                                       0,
+                                                       11714,
+                                                       29,
+                                                       14
+                                                   ],
+                       "status":  "fixed"
+                   },
+                   {
+                       "file":  "Theorems/Thm_ModularCurve_JZero_jensen_arch_at_of_nonCuspidal.lean",
+                       "name":  "ModularCurve.JZero.jensen_arch_at_of_nonCuspidal",
+                       "reason":  "truncated",
+                       "expected_signature_characters":  1652,
+                       "baseline_signature_characters":  1417,
+                       "first_difference_character":  1417,
+                       "baseline_signature_span":  [
+                                                       10711,
+                                                       15,
+                                                       0,
+                                                       12303,
+                                                       35,
+                                                       41
+                                                   ],
+                       "status":  "fixed"
+                   },
+                   {
+                       "file":  "Theorems/Thm_ModularCurve_JZero_jensen_arch_embedding.lean",
+                       "name":  "ModularCurve.JZero.jensen_arch_embedding",
+                       "reason":  "truncated",
+                       "expected_signature_characters":  1150,
+                       "baseline_signature_characters":  507,
+                       "first_difference_character":  507,
+                       "baseline_signature_span":  [
+                                                       10686,
+                                                       17,
+                                                       0,
+                                                       11242,
+                                                       24,
+                                                       14
+                                                   ],
+                       "status":  "fixed"
+                   },
+                   {
+                       "file":  "Theorems/Thm_ModularCurve_JZero_jensen_bad_at_of_prime_of_five_le.lean",
+                       "name":  "ModularCurve.JZero.jensen_bad_at_of_prime_of_five_le",
+                       "reason":  "truncated",
+                       "expected_signature_characters":  1553,
+                       "baseline_signature_characters":  1291,
+                       "first_difference_character":  1291,
+                       "baseline_signature_span":  [
+                                                       28029,
+                                                       25,
+                                                       0,
+                                                       29496,
+                                                       42,
+                                                       41
+                                                   ],
+                       "status":  "fixed"
+                   },
+                   {
+                       "file":  "Theorems/Thm_ModularCurve_JZero_jensen_bad_primes_of_prime_of_five_le.lean",
+                       "name":  "ModularCurve.JZero.jensen_bad_primes_of_prime_of_five_le",
+                       "reason":  "truncated",
+                       "expected_signature_characters":  1716,
+                       "baseline_signature_characters":  1085,
+                       "first_difference_character":  1085,
+                       "baseline_signature_span":  [
+                                                       28015,
+                                                       26,
+                                                       0,
+                                                       29218,
+                                                       41,
+                                                       14
+                                                   ],
+                       "status":  "fixed"
+                   },
+                   {
+                       "file":  "Theorems/Thm_ModularCurve_JZero_pairing_chord_self_le_of_prime_of_five_le.lean",
+                       "name":  "ModularCurve.JZero.pairing_chord_self_le_of_prime_of_five_le",
+                       "reason":  "truncated",
+                       "expected_signature_characters":  760,
+                       "baseline_signature_characters":  483,
+                       "first_difference_character":  483,
+                       "baseline_signature_span":  [
+                                                       28883,
+                                                       26,
+                                                       0,
+                                                       29412,
+                                                       31,
+                                                       77
+                                                   ],
+                       "status":  "fixed"
+                   },
+                   {
+                       "file":  "Theorems/Thm_ModularCurve_JZero_pairing_principal_le_of_prime_of_five_le.lean",
+                       "name":  "ModularCurve.JZero.pairing_principal_le_of_prime_of_five_le",
+                       "reason":  "truncated",
+                       "expected_signature_characters":  730,
+                       "baseline_signature_characters":  422,
+                       "first_difference_character":  422,
+                       "baseline_signature_span":  [
+                                                       28882,
+                                                       26,
+                                                       0,
+                                                       29336,
+                                                       31,
+                                                       67
+                                                   ],
+                       "status":  "fixed"
+                   },
+                   {
+                       "file":  "Theorems/Thm_ModularCurve_JZero_prox_sum_chowSide.lean",
+                       "name":  "ModularCurve.JZero.prox_sum_chowSide",
+                       "reason":  "truncated",
+                       "expected_signature_characters":  882,
+                       "baseline_signature_characters":  418,
+                       "first_difference_character":  418,
+                       "baseline_signature_span":  [
+                                                       9397,
+                                                       17,
+                                                       0,
+                                                       9860,
+                                                       22,
+                                                       57
+                                                   ],
+                       "status":  "fixed"
+                   },
+                   {
+                       "file":  "Theorems/Thm_ModularCurve_JZero_sum_pairHt_twoLine_ledger_of_nonCuspidal_of_prime_of_five_le.lean",
+                       "name":  "ModularCurve.JZero.sum_pairHt_twoLine_ledger_of_nonCuspidal_of_prime_of_five_le",
+                       "reason":  "truncated",
+                       "expected_signature_characters":  1608,
+                       "baseline_signature_characters":  883,
+                       "first_difference_character":  883,
+                       "baseline_signature_span":  [
+                                                       29006,
+                                                       28,
+                                                       0,
+                                                       29971,
+                                                       39,
+                                                       92
+                                                   ],
+                       "status":  "fixed"
+                   },
+                   {
+                       "file":  "Theorems/Thm_ModularCurve_MultCovering_abs_prox_evalVec_le_of_mem_infChart_dom_of_forall_abv_evalAt_goodFamily_lt_one.lean",
+                       "name":  "ModularCurve.MultCovering.abs_prox_evalVec_le_of_mem_infChart_dom_of_forall_abv_evalAt_goodFamily_lt_one",
+                       "reason":  "truncated",
+                       "expected_signature_characters":  1622,
+                       "baseline_signature_characters":  1517,
+                       "first_difference_character":  1517,
+                       "baseline_signature_span":  [
+                                                       1653,
+                                                       14,
+                                                       0,
+                                                       3313,
+                                                       31,
+                                                       84
+                                                   ],
+                       "status":  "fixed"
+                   },
+                   {
+                       "file":  "Theorems/Thm_ModularCurve_MultCovering_crossComparison_annIn_annIn.lean",
+                       "name":  "ModularCurve.MultCovering.crossComparison_annIn_annIn",
+                       "reason":  "truncated",
+                       "expected_signature_characters":  817,
+                       "baseline_signature_characters":  709,
+                       "first_difference_character":  709,
+                       "baseline_signature_span":  [
+                                                       17815,
+                                                       24,
+                                                       0,
+                                                       18585,
+                                                       32,
+                                                       88
+                                                   ],
+                       "status":  "fixed"
+                   },
+                   {
+                       "file":  "Theorems/Thm_ModularCurve_MultCovering_crossComparison_annIn_annIn_of_deep_of_zeroFree.lean",
+                       "name":  "ModularCurve.MultCovering.crossComparison_annIn_annIn_of_deep_of_zeroFree",
+                       "reason":  "truncated",
+                       "expected_signature_characters":  1462,
+                       "baseline_signature_characters":  1354,
+                       "first_difference_character":  1354,
+                       "baseline_signature_span":  [
+                                                       6984,
+                                                       21,
+                                                       0,
+                                                       8489,
+                                                       38,
+                                                       88
+                                                   ],
+                       "status":  "fixed"
+                   },
+                   {
+                       "file":  "Theorems/Thm_ModularCurve_MultCovering_crossComparison_annIn_annIn_of_eq_eleven.lean",
+                       "name":  "ModularCurve.MultCovering.crossComparison_annIn_annIn_of_eq_eleven",
+                       "reason":  "truncated",
+                       "expected_signature_characters":  832,
+                       "baseline_signature_characters":  724,
+                       "first_difference_character":  724,
+                       "baseline_signature_span":  [
+                                                       17882,
+                                                       24,
+                                                       0,
+                                                       18665,
+                                                       32,
+                                                       88
+                                                   ],
+                       "status":  "fixed"
+                   },
+                   {
+                       "file":  "Theorems/Thm_ModularCurve_MultCovering_crossComparison_annIn_annIn_of_jWidth_eq_one.lean",
+                       "name":  "ModularCurve.MultCovering.crossComparison_annIn_annIn_of_jWidth_eq_one",
+                       "reason":  "truncated",
+                       "expected_signature_characters":  910,
+                       "baseline_signature_characters":  802,
+                       "first_difference_character":  802,
+                       "baseline_signature_span":  [
+                                                       13816,
+                                                       22,
+                                                       0,
+                                                       14681,
+                                                       32,
+                                                       88
+                                                   ],
+                       "status":  "fixed"
+                   },
+                   {
+                       "file":  "Theorems/Thm_ModularCurve_MultCovering_crossComparison_annIn_annIn_of_leadingTerms.lean",
+                       "name":  "ModularCurve.MultCovering.crossComparison_annIn_annIn_of_leadingTerms",
+                       "reason":  "truncated",
+                       "expected_signature_characters":  3378,
+                       "baseline_signature_characters":  3270,
+                       "first_difference_character":  3270,
+                       "baseline_signature_span":  [
+                                                       7026,
+                                                       21,
+                                                       0,
+                                                       10725,
+                                                       59,
+                                                       88
+                                                   ],
+                       "status":  "fixed"
+                   },
+                   {
+                       "file":  "Theorems/Thm_ModularCurve_MultCovering_crossComparison_annIn_annIn_of_orth_of_linearIndependent.lean",
+                       "name":  "ModularCurve.MultCovering.crossComparison_annIn_annIn_of_orth_of_linearIndependent",
+                       "reason":  "truncated",
+                       "expected_signature_characters":  1749,
+                       "baseline_signature_characters":  1641,
+                       "first_difference_character":  1641,
+                       "baseline_signature_span":  [
+                                                       16401,
+                                                       26,
+                                                       0,
+                                                       18187,
+                                                       47,
+                                                       88
+                                                   ],
+                       "status":  "fixed"
+                   },
+                   {
+                       "file":  "Theorems/Thm_ModularCurve_MultCovering_crossComparison_annIn_annIn_of_outer.lean",
+                       "name":  "ModularCurve.MultCovering.crossComparison_annIn_annIn_of_outer",
+                       "reason":  "truncated",
+                       "expected_signature_characters":  1144,
+                       "baseline_signature_characters":  1036,
+                       "first_difference_character":  1036,
+                       "baseline_signature_span":  [
+                                                       13812,
+                                                       22,
+                                                       0,
+                                                       14945,
+                                                       35,
+                                                       88
+                                                   ],
+                       "status":  "fixed"
+                   },
+                   {
+                       "file":  "Theorems/Thm_ModularCurve_MultCovering_crossComparison_annIn_annIn_of_outer_of_lt_hasseExp.lean",
+                       "name":  "ModularCurve.MultCovering.crossComparison_annIn_annIn_of_outer_of_lt_hasseExp",
+                       "reason":  "truncated",
+                       "expected_signature_characters":  1740,
+                       "baseline_signature_characters":  1632,
+                       "first_difference_character":  1632,
+                       "baseline_signature_span":  [
+                                                       7034,
+                                                       21,
+                                                       0,
+                                                       8860,
+                                                       41,
+                                                       88
+                                                   ],
+                       "status":  "fixed"
+                   },
+                   {
+                       "file":  "Theorems/Thm_ModularCurve_MultCovering_crossComparison_annIn_zeroChart.lean",
+                       "name":  "ModularCurve.MultCovering.crossComparison_annIn_zeroChart",
+                       "reason":  "truncated",
+                       "expected_signature_characters":  797,
+                       "baseline_signature_characters":  690,
+                       "first_difference_character":  690,
+                       "baseline_signature_span":  [
+                                                       17770,
+                                                       24,
+                                                       0,
+                                                       18521,
+                                                       31,
+                                                       86
+                                                   ],
+                       "status":  "fixed"
+                   },
+                   {
+                       "file":  "Theorems/Thm_ModularCurve_MultCovering_crossComparison_annIn_zeroChart_of_adapted.lean",
+                       "name":  "ModularCurve.MultCovering.crossComparison_annIn_zeroChart_of_adapted",
+                       "reason":  "truncated",
+                       "expected_signature_characters":  1715,
+                       "baseline_signature_characters":  1608,
+                       "first_difference_character":  1608,
+                       "baseline_signature_span":  [
+                                                       16614,
+                                                       23,
+                                                       0,
+                                                       18367,
+                                                       42,
+                                                       86
+                                                   ],
+                       "status":  "fixed"
+                   },
+                   {
+                       "file":  "Theorems/Thm_ModularCurve_MultCovering_crossComparison_annIn_zeroChart_of_ord_one_of_zeroFree.lean",
+                       "name":  "ModularCurve.MultCovering.crossComparison_annIn_zeroChart_of_ord_one_of_zeroFree",
+                       "reason":  "truncated",
+                       "expected_signature_characters":  1028,
+                       "baseline_signature_characters":  921,
+                       "first_difference_character":  921,
+                       "baseline_signature_span":  [
+                                                       7767,
+                                                       21,
+                                                       0,
+                                                       8764,
+                                                       31,
+                                                       86
+                                                   ],
+                       "status":  "fixed"
+                   },
+                   {
+                       "file":  "Theorems/Thm_ModularCurve_MultCovering_crossComparison_annIn_zeroChart_of_twoMembers.lean",
+                       "name":  "ModularCurve.MultCovering.crossComparison_annIn_zeroChart_of_twoMembers",
+                       "reason":  "truncated",
+                       "expected_signature_characters":  1772,
+                       "baseline_signature_characters":  1665,
+                       "first_difference_character":  1665,
+                       "baseline_signature_span":  [
+                                                       7660,
+                                                       18,
+                                                       0,
+                                                       9525,
+                                                       39,
+                                                       86
+                                                   ],
+                       "status":  "fixed"
+                   },
+                   {
+                       "file":  "Theorems/Thm_ModularCurve_MultCovering_crossComparison_of_forall_mem_chart_dom_or_mem_annIn_dom.lean",
+                       "name":  "ModularCurve.MultCovering.crossComparison_of_forall_mem_chart_dom_or_mem_annIn_dom",
+                       "reason":  "truncated",
+                       "expected_signature_characters":  1065,
+                       "baseline_signature_characters":  960,
+                       "first_difference_character":  960,
+                       "baseline_signature_span":  [
+                                                       17795,
+                                                       24,
+                                                       0,
+                                                       18848,
+                                                       34,
+                                                       84
+                                                   ],
+                       "status":  "fixed"
+                   },
+                   {
+                       "file":  "Theorems/Thm_ModularCurve_XHDRModelAtP_isOpenImmersion_and_exists_functionField_ringEquiv_of_genericFibre.lean",
+                       "name":  "ModularCurve.XHDRModelAtP.isOpenImmersion_and_exists_functionField_ringEquiv_of_genericFibre",
+                       "reason":  "truncated",
+                       "expected_signature_characters":  1440,
+                       "baseline_signature_characters":  1203,
+                       "first_difference_character":  1203,
+                       "baseline_signature_span":  [
+                                                       496,
+                                                       12,
+                                                       0,
+                                                       1785,
+                                                       27,
+                                                       26
+                                                   ],
+                       "status":  "fixed"
+                   },
+                   {
+                       "file":  "Theorems/Thm_ModularCurve_exists_uniform_adapted_basis.lean",
+                       "name":  "ModularCurve.exists_uniform_adapted_basis",
+                       "reason":  "truncated",
+                       "expected_signature_characters":  1316,
+                       "baseline_signature_characters":  1027,
+                       "first_difference_character":  1027,
+                       "baseline_signature_span":  [
+                                                       5768,
+                                                       18,
+                                                       0,
+                                                       6893,
+                                                       32,
+                                                       84
+                                                   ],
+                       "status":  "fixed"
+                   },
+                   {
+                       "file":  "Theorems/Thm_ModularGroup_exists_bounds_smul_of_mem_fd_of_im_le.lean",
+                       "name":  "ModularGroup.exists_bounds_smul_of_mem_fd_of_im_le",
+                       "reason":  "truncated",
+                       "expected_signature_characters":  220,
+                       "baseline_signature_characters":  161,
+                       "first_difference_character":  161,
+                       "baseline_signature_span":  [
+                                                       141,
+                                                       7,
+                                                       0,
+                                                       331,
+                                                       8,
+                                                       70
+                                                   ],
+                       "status":  "fixed"
+                   },
+                   {
+                       "file":  "Theorems/Thm_NumberField_Units_exists_forall_abs_sub_mult_mul_log_le.lean",
+                       "name":  "NumberField.Units.exists_forall_abs_sub_mult_mul_log_le",
+                       "reason":  "truncated",
+                       "expected_signature_characters":  306,
+                       "baseline_signature_characters":  250,
+                       "first_difference_character":  250,
+                       "baseline_signature_span":  [
+                                                       153,
+                                                       5,
+                                                       0,
+                                                       422,
+                                                       7,
+                                                       79
+                                                   ],
+                       "status":  "fixed"
+                   },
+                   {
+                       "file":  "Theorems/Thm_NumberField_Units_exists_forall_abs_two_mul_log_add_log_sub_div_le.lean",
+                       "name":  "NumberField.Units.exists_forall_abs_two_mul_log_add_log_sub_div_le",
+                       "reason":  "truncated",
+                       "expected_signature_characters":  383,
+                       "baseline_signature_characters":  217,
+                       "first_difference_character":  217,
+                       "baseline_signature_span":  [
+                                                       213,
+                                                       9,
+                                                       0,
+                                                       453,
+                                                       12,
+                                                       42
+                                                   ],
+                       "status":  "fixed"
+                   },
+                   {
+                       "file":  "Theorems/Thm_NumberField_abs_discr_le_three_pow_95_of_isGalois_of_finrank_eq_48.lean",
+                       "name":  "NumberField.abs_discr_le_three_pow_95_of_isGalois_of_finrank_eq_48",
+                       "reason":  "truncated",
+                       "expected_signature_characters":  356,
+                       "baseline_signature_characters":  315,
+                       "first_difference_character":  315,
+                       "baseline_signature_span":  [
+                                                       116,
+                                                       5,
+                                                       0,
+                                                       443,
+                                                       9,
+                                                       76
+                                                   ],
+                       "status":  "fixed"
+                   },
+                   {
+                       "file":  "Theorems/Thm_NumberField_exists_forall_abs_tsum_absNorm_rpow_neg_sub_inv_finrank_mul_log_le_of_isCyclotomicExtension.lean",
+                       "name":  "NumberField.exists_forall_abs_tsum_absNorm_rpow_neg_sub_inv_finrank_mul_log_le_of_isCyclotomicExtension",
+                       "reason":  "truncated",
+                       "expected_signature_characters":  637,
+                       "baseline_signature_characters":  358,
+                       "first_difference_character":  358,
+                       "baseline_signature_span":  [
+                                                       492,
+                                                       11,
+                                                       0,
+                                                       877,
+                                                       15,
+                                                       51
+                                                   ],
+                       "status":  "fixed"
+                   },
+                   {
+                       "file":  "Theorems/Thm_NumberField_mixedEmbedding_abs_algebraNorm_eq_norm.lean",
+                       "name":  "NumberField.mixedEmbedding.abs_algebraNorm_eq_norm",
+                       "reason":  "truncated",
+                       "expected_signature_characters":  182,
+                       "baseline_signature_characters":  135,
+                       "first_difference_character":  135,
+                       "baseline_signature_span":  [
+                                                       149,
+                                                       9,
+                                                       0,
+                                                       284,
+                                                       10,
+                                                       76
+                                                   ],
+                       "status":  "fixed"
+                   },
+                   {
+                       "file":  "Theorems/Thm_RationalLattice_abs_det_eq_measure_div_of_squeeze.lean",
+                       "name":  "RationalLattice.abs_det_eq_measure_div_of_squeeze",
+                       "reason":  "truncated",
+                       "expected_signature_characters":  967,
+                       "baseline_signature_characters":  870,
+                       "first_difference_character":  870,
+                       "baseline_signature_span":  [
+                                                       209,
+                                                       9,
+                                                       0,
+                                                       1207,
+                                                       18,
+                                                       83
+                                                   ],
+                       "status":  "fixed"
+                   },
+                   {
+                       "file":  "Theorems/Thm_exists_abs_log_abv_le_mul_neg_log_of_isAlgebraic.lean",
+                       "name":  "exists_abs_log_abv_le_mul_neg_log_of_isAlgebraic",
+                       "reason":  "truncated",
+                       "expected_signature_characters":  305,
+                       "baseline_signature_characters":  252,
+                       "first_difference_character":  252,
+                       "baseline_signature_span":  [
+                                                       129,
+                                                       7,
+                                                       0,
+                                                       406,
+                                                       10,
+                                                       82
+                                                   ],
+                       "status":  "fixed"
+                   }
+               ]
+}

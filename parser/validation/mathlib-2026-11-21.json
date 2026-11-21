@@ -1,0 +1,417 @@
+{
+  "schema": "mathlib-parser-accuracy-v1",
+  "date": "2026-11-21",
+  "source": {
+    "repository": "https://github.com/leanprover-community/mathlib4",
+    "commit": "1b0782d8191b03e0001caac10e1601d17f2cd580",
+    "lean_toolchain": "leanprover/lean4:v4.32.0-rc1",
+    "files": 8206,
+    "bytes": 95119302
+  },
+  "context": {
+    "files": 786,
+    "bytes": 9627333,
+    "sources": [
+      {
+        "name": "Lean Init",
+        "toolchain": "leanprover/lean4:v4.32.0-rc1",
+        "files": 600
+      },
+      {
+        "name": "Batteries",
+        "repository": "https://github.com/leanprover-community/batteries",
+        "commit": "7d1b02eb63b526dff04cb990cf05b06b38ccbd3f",
+        "files": 186
+      }
+    ],
+    "included_in_benchmark_cost": true,
+    "emitted_as_target_declarations": false
+  },
+  "artifacts": {
+    "parser_binary_sha256": "6630a2d201036c2a7cb8111caf14eeddc3a60b7807cba8f382d803ccbe8c76c2",
+    "parser_jsonl_sha256": "5a4640777c3e008b6ca2db6cbdaf4a19a532e443ebde22f7722247306c22dcde",
+    "reference_jsonl_sha256": "1cec14e93c3213ae01a15d2b19328ad2c318382a2391738ae09f9fe7ecf07390",
+    "simps_sidecar_sha256": "8f8008a54f30d73a417527de197218dfe560c077d8e2aca33a9296f10e57b061",
+    "validation_binding": {
+      "benchmark_run": "final-v2",
+      "parser_export_byte_identical_to_prior_validation": true,
+      "prior_validation_binary_sha256": "6cdfd41a4d5b937b31e90a3d074f885154a18690e20b779113bde267378c8f01",
+      "evidence": "SHA-256 of final-v2 Mathlib declarations.jsonl equals the independently validated prior export. Source commit, target file/byte counts and context file/byte counts agree with the prior benchmark manifest.",
+      "source_integrity": {
+        "Mathlib": {
+          "files": 8206,
+          "bytes": 95119302,
+          "all_files_match_copy_manifest": true,
+          "canonical_manifest_sha256": "f1f553532947ff0b92ee43f195675f73f5c01e9d358ad55cee79513ba3d5e675"
+        },
+        "Init": {
+          "files": 600,
+          "bytes": 8511617,
+          "all_files_match_copy_manifest": true,
+          "canonical_manifest_sha256": "bec63b2eb41b85ae49274544f2df9183719b1e1c218c610e7258feec095c42cd"
+        },
+        "Batteries": {
+          "files": 186,
+          "bytes": 1115716,
+          "all_files_match_copy_manifest": true,
+          "canonical_manifest_sha256": "237ecca537cb88da0d57f75efd37c12aec32fb80c9057f82731b0850f61e96ea"
+        }
+      }
+    }
+  },
+  "reference_repair": {
+    "tool": "validation/refresh_reference_module.py",
+    "module": "Mathlib.CategoryTheory.Abelian.Monomorphisms",
+    "source_file": "Mathlib/CategoryTheory/Abelian/Monomorphisms.lean",
+    "source_sha256": "6ed89498d94c6376adb55cf6ef847b79892cd9b5d85b7fb513919a5899cb22d8",
+    "method": "Compile unchanged source under its original module name in a fresh artifact overlay; replace only that module reference records.",
+    "source_was_byte_identical": true,
+    "shared_build_modified": false,
+    "previous_records": [
+      {
+        "f": [
+          "inst"
+        ],
+        "k": "thm",
+        "m": "Mathlib.CategoryTheory.Abelian.Monomorphisms",
+        "n": "CategoryTheory.Abelian.instIsStableUnderCobaseChangeMonomorphisms",
+        "r": [
+          43,
+          0,
+          44,
+          64
+        ],
+        "s": [
+          43,
+          0,
+          43,
+          8
+        ]
+      },
+      {
+        "f": [
+          "inst"
+        ],
+        "k": "thm",
+        "m": "Mathlib.CategoryTheory.Abelian.Monomorphisms",
+        "n": "CategoryTheory.Abelian.instIsStableUnderBaseChangeEpimorphisms",
+        "r": [
+          46,
+          0,
+          47,
+          62
+        ],
+        "s": [
+          46,
+          0,
+          46,
+          8
+        ]
+      },
+      {
+        "f": [
+          "private",
+          "internal"
+        ],
+        "k": "thm",
+        "m": "Mathlib.CategoryTheory.Abelian.Monomorphisms",
+        "n": "_private.Mathlib.CategoryTheory.Abelian.Monomorphisms.0.CategoryTheory.Abelian.instIsStableUnderCobaseChangeMonomorphisms._simp_1"
+      },
+      {
+        "f": [
+          "private",
+          "internal"
+        ],
+        "k": "thm",
+        "m": "Mathlib.CategoryTheory.Abelian.Monomorphisms",
+        "n": "_private.Mathlib.CategoryTheory.Abelian.Monomorphisms.0.CategoryTheory.Abelian.instIsStableUnderBaseChangeEpimorphisms._simp_1"
+      }
+    ],
+    "fresh_records": [
+      {
+        "f": [
+          "inst"
+        ],
+        "k": "thm",
+        "m": "Mathlib.CategoryTheory.Abelian.Monomorphisms",
+        "n": "CategoryTheory.Abelian.instIsStableUnderCobaseChangeMonomorphisms",
+        "r": [
+          30,
+          0,
+          33,
+          19
+        ],
+        "s": [
+          30,
+          0,
+          30,
+          8
+        ]
+      },
+      {
+        "f": [
+          "inst"
+        ],
+        "k": "thm",
+        "m": "Mathlib.CategoryTheory.Abelian.Monomorphisms",
+        "n": "CategoryTheory.Abelian.instIsStableUnderBaseChangeEpimorphisms",
+        "r": [
+          35,
+          0,
+          38,
+          19
+        ],
+        "s": [
+          35,
+          0,
+          35,
+          8
+        ]
+      },
+      {
+        "f": [
+          "private",
+          "internal"
+        ],
+        "k": "thm",
+        "m": "Mathlib.CategoryTheory.Abelian.Monomorphisms",
+        "n": "_private.Mathlib.CategoryTheory.Abelian.Monomorphisms.0.CategoryTheory.Abelian.instIsStableUnderCobaseChangeMonomorphisms._simp_1"
+      },
+      {
+        "f": [
+          "private",
+          "internal"
+        ],
+        "k": "thm",
+        "m": "Mathlib.CategoryTheory.Abelian.Monomorphisms",
+        "n": "_private.Mathlib.CategoryTheory.Abelian.Monomorphisms.0.CategoryTheory.Abelian.instIsStableUnderBaseChangeEpimorphisms._simp_1"
+      }
+    ],
+    "command_template_note": "These portable templates replace local paths in the executed commands; raw executed argv remain in the local provenance artifact.",
+    "compile_command_template": [
+      "lake",
+      "env",
+      "lean",
+      "--root=${MATHLIB}",
+      "-o",
+      "${WORK}/artifacts/Mathlib/CategoryTheory/Abelian/Monomorphisms.olean",
+      "${MATHLIB}/Mathlib/CategoryTheory/Abelian/Monomorphisms.lean"
+    ],
+    "dump_command_template": [
+      "${LEAN_TOOLCHAIN}/bin/lean",
+      "--run",
+      "${PARSER_REPO}/parser/validation/DumpRanges.lean",
+      "${WORK}/module-ranges.jsonl",
+      "Mathlib.CategoryTheory.Abelian.Monomorphisms",
+      "Mathlib.CategoryTheory.Abelian.Monomorphisms"
+    ],
+    "dump_environment_template": {
+      "LEAN_PATH": "${WORK}/artifacts:${ORIGINAL_LEAN_PATH}"
+    },
+    "working_directory_template": "${BUILT_WORKSPACE}"
+  },
+  "declaration_range_comparison": {
+    "reference_categories": {
+      "declaration": 242971,
+      "anonymous-instance": 14312,
+      "no-range": 233290,
+      "generated": 8635,
+      "constructor": 1234,
+      "field": 6968,
+      "generated-constructor": 3421,
+      "generated-attribute": 48874,
+      "generated-parent": 979
+    },
+    "categories": {
+      "declaration": {
+        "total": 242971,
+        "found": 242971,
+        "range_start": 242971,
+        "range_end": 242971,
+        "selection": 242971,
+        "exact": 242971
+      },
+      "anonymous-instance": {
+        "total": 14312,
+        "found": 14312,
+        "range_start": 14312,
+        "range_end": 14312,
+        "selection": 14312,
+        "exact": 14312
+      },
+      "constructor": {
+        "total": 1234,
+        "found": 1234,
+        "range_start": 1234,
+        "range_end": 1234,
+        "selection": 1234,
+        "exact": 1234
+      },
+      "field": {
+        "total": 6968,
+        "found": 6968,
+        "range_start": 6968,
+        "range_end": 6968,
+        "selection": 6968,
+        "exact": 6968
+      },
+      "generated-constructor": {
+        "total": 3421,
+        "found": 3421,
+        "range_start": 3421,
+        "range_end": 3421,
+        "selection": 3421,
+        "exact": 3421
+      },
+      "generated-attribute": {
+        "total": 48874,
+        "found": 25568,
+        "range_start": 25568,
+        "range_end": 25568,
+        "selection": 25568,
+        "exact": 25568
+      },
+      "generated-parent": {
+        "total": 979,
+        "found": 930,
+        "range_start": 930,
+        "range_end": 930,
+        "selection": 930,
+        "exact": 930
+      },
+      "declaration-short": {}
+    },
+    "authored": {
+      "total": 265485,
+      "found": 265485,
+      "range_start": 265485,
+      "range_end": 265485,
+      "selection": 265485,
+      "exact": 265485
+    },
+    "precision": {
+      "authored_total": 265827,
+      "authored_ok": 265827,
+      "generated_total": 30833,
+      "generated_ok": 30410
+    },
+    "reference_modules": 8056,
+    "parser_modules": 8056,
+    "parser_declarations": 297228,
+    "authored_exact": true,
+    "scope": "Authored source declarations; generated declarations are reported separately."
+  },
+  "simps_semantic_export": {
+    "schema": "lean-generated-sidecar-v1",
+    "provenance": "lean-environment",
+    "reference_sha256": "1cec14e93c3213ae01a15d2b19328ad2c318382a2391738ae09f9fe7ecf07390",
+    "records": 17745,
+    "internal_records": 37,
+    "selected_token_candidates": 17745,
+    "by_attribution": {
+      "direct": 16209,
+      "nested-attr": 1536
+    },
+    "unattributed_token_candidates": [],
+    "by_attribute": {
+      "simps": 10037,
+      "simps!": 7708
+    },
+    "reference_constants_without_ranges": 233290,
+    "unattributed_source_positions": [
+      {
+        "module": "Mathlib.CategoryTheory.Limits.Types.Limits",
+        "name": "CategoryTheory.Limits.limit.w_apply",
+        "range": [
+          21,
+          11,
+          21,
+          22
+        ]
+      },
+      {
+        "module": "Mathlib.CategoryTheory.Limits.Types.Limits",
+        "name": "CategoryTheory.Limits.limit.lift_π_apply",
+        "range": [
+          21,
+          11,
+          21,
+          22
+        ]
+      }
+    ],
+    "limitation": "Requires a built environment matching these sources; constants without ranges cannot be attributed to an attribute by this export."
+  },
+  "simps_static_comparison": {
+    "scope": "Reference constants attributed lexically to simps or simps!, including nested (attr := ...) lists and internal constants. Static matches require module, source name and originating attribute; exact matches also require range and selection. Precision counts emitted parser records.",
+    "metrics": {
+      "simps": {
+        "reference_constants": 10037,
+        "reference_internal_constants": 28,
+        "matched_reference_constants": 952,
+        "exact_matched_reference_constants": 952,
+        "matched_internal_constants": 2,
+        "recall": 0.09484905848361064,
+        "parser_emitted_records": 983,
+        "parser_correct_records": 952,
+        "parser_exact_records": 952,
+        "precision": 0.9684638860630722,
+        "matched_by_any_generated_parser_origin": 952
+      },
+      "simps!": {
+        "reference_constants": 7708,
+        "reference_internal_constants": 9,
+        "matched_reference_constants": 1695,
+        "exact_matched_reference_constants": 1695,
+        "matched_internal_constants": 3,
+        "recall": 0.219901401141671,
+        "parser_emitted_records": 1750,
+        "parser_correct_records": 1695,
+        "parser_exact_records": 1695,
+        "precision": 0.9685714285714285,
+        "matched_by_any_generated_parser_origin": 1695
+      },
+      "combined": {
+        "reference_constants": 17745,
+        "reference_internal_constants": 37,
+        "matched_reference_constants": 2647,
+        "exact_matched_reference_constants": 2647,
+        "matched_internal_constants": 5,
+        "recall": 0.1491687799380107,
+        "parser_emitted_records": 2733,
+        "parser_correct_records": 2647,
+        "parser_exact_records": 2647,
+        "precision": 0.9685327478960849,
+        "matched_by_any_generated_parser_origin": 2647
+      }
+    },
+    "earlier_subset_reconciliation": {
+      "earlier_direct_owner_analysis": 16175,
+      "standalone_attribute_records_omitted_by_that_analysis": 34,
+      "nested_attribute_records_omitted_by_that_analysis": 1536
+    },
+    "uncertainty_audit": {
+      "unmatched_emitted_records": 86,
+      "unmatched_records_marked_approximate": 86,
+      "unmatched_records_marked_exact": 0,
+      "unmatched_records_matching_other_reference_constants": 0,
+      "by_attribute": {
+        "simps": {
+          "unmatched": 31,
+          "approximate": 31
+        },
+        "simps!": {
+          "unmatched": 55,
+          "approximate": 55
+        }
+      },
+      "parser_export_sha256": "5a4640777c3e008b6ca2db6cbdaf4a19a532e443ebde22f7722247306c22dcde"
+    }
+  },
+  "limitations": [
+    "The declaration-range reference covers 8056 built modules; the source corpus has 8206 files.",
+    "Generated-name recovery remains incomplete; authored 100% does not imply generated 100%.",
+    "The semantic sidecar exports Lean environment metadata and is not an independent parser accuracy oracle.",
+    "Constants without ranges cannot be attributed to simps by this export; invalid positions remain explicit metadata."
+  ]
+}

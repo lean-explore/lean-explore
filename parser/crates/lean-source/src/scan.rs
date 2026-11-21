@@ -229,6 +229,23 @@ pub struct Command {
     pub namespace: u32,
 }
 
+/// Fields visible on a structure, including inherited defaults written without a type.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct StructureInfo {
+    pub fields: std::collections::HashSet<String>,
+    pub parents: Vec<String>,
+    pub namespace: String,
+    pub unknown_parents: bool,
+}
+
+/// Explicit projection naming configured by `initialize_simps_projections`.
+#[derive(Clone, Debug, Default)]
+pub struct SimpsProjectionConfig {
+    pub target: String,
+    pub namespace: String,
+    pub prefixes: std::collections::HashSet<String>,
+}
+
 /// Result of parsing one file.
 #[derive(Clone, Debug, Default)]
 pub struct Parsed {
@@ -239,6 +256,14 @@ pub struct Parsed {
     pub namespaces: Vec<String>,
     /// Translations this file registers: `(0 for to_additive or 1 for to_dual, source, target)`.
     pub translations: Vec<(u8, String, String)>,
+    /// Structure fields and parents used to resolve inherited field defaults.
+    pub structures: std::collections::HashMap<String, StructureInfo>,
+    /// An untyped field under `extends` may need another file's structure declarations.
+    pub needs_structure_context: bool,
+    /// Projection naming rules written in this file.
+    pub simps_projections: Vec<SimpsProjectionConfig>,
+    /// Explicit `simps` projections may be named by another file's configuration.
+    pub needs_simps_context: bool,
 }
 
 /// Parses a Lean source file.
@@ -268,6 +293,9 @@ pub fn parse_with(src: &[u8], toks: &mut Vec<Token>) -> Parsed {
 pub struct Context {
     /// Names of declarations written in the project (not generated).
     pub declared: std::collections::HashSet<String>,
+    /// Structure declarations available to distinguish new fields from inherited defaults.
+    pub structures: std::collections::HashMap<String, StructureInfo>,
+    pub simps_projections: Vec<SimpsProjectionConfig>,
     /// Registered translations, `[to_additive, to_dual]`, source to target.
     pub translations: [std::collections::HashMap<String, String>; 2],
     /// Record the range of a `to_additive`/`to_dual` translation at the written name, as Mathlib
@@ -288,6 +316,9 @@ impl Context {
         };
         let mut generated = std::collections::HashSet::new();
         for p in files.clone() {
+            ctx.add_structures(p);
+            ctx.simps_projections
+                .extend(p.simps_projections.iter().cloned());
             for d in &p.decls {
                 if let (true, Some(n)) = (d.generated && d.origin.is_some(), &d.name) {
                     generated.insert(n.as_str());
@@ -309,8 +340,26 @@ impl Context {
         ctx
     }
 
+    /// Conflicting source declarations cannot identify a unique imported parent.
+    fn add_structures(&mut self, parsed: &Parsed) {
+        for (name, info) in &parsed.structures {
+            if let Some(existing) = self.structures.get_mut(name) {
+                if existing != info {
+                    existing.fields.retain(|field| info.fields.contains(field));
+                    existing.parents.clear();
+                    existing.unknown_parents = true;
+                }
+            } else {
+                self.structures.insert(name.clone(), info.clone());
+            }
+        }
+    }
+
     /// Adds what one parsed file declares and registers.
     pub fn add(&mut self, parsed: &Parsed) {
+        self.add_structures(parsed);
+        self.simps_projections
+            .extend(parsed.simps_projections.iter().cloned());
         for d in &parsed.decls {
             if let (false, Some(n)) = (d.generated, &d.name) {
                 self.declared.insert(n.clone());
@@ -1024,6 +1073,21 @@ impl<'a> Reader<'a> {
     fn special_command(&mut self, h: usize, e: usize) {
         let toks = self.toks;
         match toks[h].text(self.src) {
+            b"initialize_simps_projections" => {
+                if h + 1 < e && toks[h + 1].kind == Kind::Ident {
+                    let mut config = SimpsProjectionConfig {
+                        target: self.text(h + 1).to_string(),
+                        namespace: self.prefix.clone(),
+                        ..Default::default()
+                    };
+                    for j in h + 2..e.saturating_sub(1) {
+                        if self.ident_is(j, b"as_prefix") && toks[j + 1].kind == Kind::Ident {
+                            config.prefixes.insert(self.text(j + 1).to_string());
+                        }
+                    }
+                    self.parsed.simps_projections.push(config);
+                }
+            }
             b"attribute" => {
                 if h + 1 >= e || toks[h + 1].kind != Kind::Open {
                     return;
@@ -1443,7 +1507,12 @@ impl<'a> Reader<'a> {
         let mut extends = None;
         let mut stop = e;
         let mut pending_binds = 0u32;
-        let mut in_match = false;
+        struct MatchState {
+            awaiting_with: bool,
+            indent: Option<u32>,
+        }
+        let mut matches: Vec<MatchState> = Vec::new();
+        let mut bar_checked_until = p;
         let mut q = p;
         while q < e {
             let t = toks[q];
@@ -1471,19 +1540,42 @@ impl<'a> Reader<'a> {
                         break;
                     }
                 }
-                Kind::Bar
-                    if depth == 0
-                        && !in_match
-                        && (inductive_like || self.bar_is_alternative(q, e)) =>
-                {
-                    body = Some(
-                        if inductive_like && q > p && toks[q - 1].kind == Kind::Doc {
-                            q - 1
-                        } else {
-                            q
-                        },
-                    );
-                    break;
+                Kind::Bar if depth == 0 => {
+                    if t.lead {
+                        while matches
+                            .last()
+                            .is_some_and(|state| state.indent.is_some_and(|indent| t.col < indent))
+                        {
+                            matches.pop();
+                        }
+                    }
+                    if let Some(state) = matches.last_mut() {
+                        // Bars in the scrutinee, such as `match |x| with`, are not alternatives.
+                        if !state.awaiting_with {
+                            state.indent.get_or_insert(t.col);
+                        }
+                        q += 1;
+                        continue;
+                    }
+                    let alternative = if inductive_like {
+                        true
+                    } else if q < bar_checked_until {
+                        false
+                    } else {
+                        let (alternative, checked_until) = self.bar_is_alternative(q, e);
+                        bar_checked_until = checked_until;
+                        alternative
+                    };
+                    if alternative {
+                        body = Some(
+                            if inductive_like && q > p && toks[q - 1].kind == Kind::Doc {
+                                q - 1
+                            } else {
+                                q
+                            },
+                        );
+                        break;
+                    }
                 }
                 Kind::Ident if depth == 0 => match t.text(src) {
                     b"where" => {
@@ -1496,7 +1588,26 @@ impl<'a> Reader<'a> {
                         break;
                     }
                     b"let" | b"have" | b"letI" | b"haveI" | b"let_fun" => pending_binds += 1,
-                    b"match" | b"fun" => in_match = true,
+                    b"match" => matches.push(MatchState {
+                        awaiting_with: true,
+                        indent: None,
+                    }),
+                    b"with" => {
+                        if let Some(at) = matches.iter().rposition(|state| state.awaiting_with) {
+                            matches.truncate(at + 1);
+                            matches[at].awaiting_with = false;
+                        }
+                    }
+                    b"fun" if q + 1 < e && toks[q + 1].kind == Kind::Bar => {
+                        matches.push(MatchState {
+                            awaiting_with: false,
+                            indent: None,
+                        })
+                    }
+                    b"by" if q + 1 < e && toks[q + 1].lead => {
+                        q = self.indented_tactic_end(q + 1, e);
+                        continue;
+                    }
                     _ => {}
                 },
                 _ => {}
@@ -1611,8 +1722,26 @@ impl<'a> Reader<'a> {
         });
         let Some(at) = at else { return };
         let attr = self.parsed.attrs[at as usize];
-        let text = &self.src[attr.span.start as usize..attr.span.end as usize];
-        let no_iff = text.windows(5).any(|w| w == b"false") && text.windows(3).any(|w| w == b"iff");
+        let mut no_iff = false;
+        let mut range = attr.name;
+        let mut j = attr.toks.0 as usize;
+        let end = attr.toks.1 as usize;
+        while j < end && self.toks[j].start < attr.name.end {
+            j += 1;
+        }
+        // Compound priorities have synthetic syntax; simple priorities retain their source range.
+        while j < end && self.toks[j].kind == Kind::Open {
+            let close = matching_close(self.toks, j, end);
+            if j + 3 >= close || !(self.ident_is(j + 1, b"iff") || self.ident_is(j + 1, b"flat")) {
+                break;
+            }
+            no_iff |= self.ident_is(j + 1, b"iff") && self.ident_is(j + 3, b"false");
+            range.end = self.toks[close].end;
+            j = close + 1;
+        }
+        if j + 1 == end {
+            range.end = self.toks[j].end;
+        }
         let names: Vec<String> = match kind {
             DeclKind::Structure | DeclKind::Class if no_iff => vec![format!("{full}.ext")],
             DeclKind::Structure | DeclKind::Class => {
@@ -1624,13 +1753,12 @@ impl<'a> Reader<'a> {
             _ => return,
         };
         for name in names {
-            // Lean records the attribute instance as the range and its name as the selection.
             self.push(Decl {
                 kind: DeclKind::Theorem,
                 name: Some(name),
                 generated: true,
-                range: Span::new(attr.name.start, attr.span.end),
-                selection: Span::new(attr.name.start, attr.span.end),
+                range,
+                selection: range,
                 keyword: attr.name,
                 signature: attr.span,
                 type_: None,
@@ -1804,7 +1932,7 @@ impl<'a> Reader<'a> {
             });
             match self.span_text(a.name) {
                 n @ ("to_additive" | "to_dual") => {
-                    if hint.is_some() {
+                    if hint.is_some() && hint != Some("existing") {
                         continue;
                     }
                     // An anonymous instance lives in the current namespace; only a written
@@ -1828,6 +1956,9 @@ impl<'a> Reader<'a> {
                     let d = self.dict(k);
                     let target = crate::translate::target_name(last, &ns, written.map(|w| w.0), d);
                     self.register(k, src.to_string(), target.clone());
+                    if hint == Some("existing") {
+                        continue;
+                    }
                     let sel = written.map_or(a.name, |w| w.1);
                     self.generated(parent, kind, &a, target.clone(), sel, written.is_none());
                     // `(attr := ext)` gives the translation its own `ext` lemmas.
@@ -1870,14 +2001,15 @@ impl<'a> Reader<'a> {
                     self.generated(parent, kind, &a, target, sel, false);
                 }
                 "simps" | "simps!" => {
+                    self.parsed.needs_simps_context |= !idents.is_empty();
                     for &j in &idents {
                         let arg = self.text(j);
                         let sel = Span::new(self.toks[j].start, self.toks[j].end);
-                        let name = match full {
-                            Some(f) => format!("{f}_{arg}"),
-                            None => self.qualify(arg),
+                        let (name, approximate) = match full {
+                            Some(f) => self.simps_projection_name(parent, f, arg),
+                            None => (self.qualify(arg), true),
                         };
-                        self.generated(parent, DeclKind::Theorem, &a, name, sel, false);
+                        self.generated(parent, DeclKind::Theorem, &a, name, sel, approximate);
                     }
                 }
                 "mk_iff" => match written {
@@ -2006,24 +2138,113 @@ impl<'a> Reader<'a> {
         }
     }
 
-    /// True if the `|` at `q` starts a match alternative rather than `|x|` notation.
-    fn bar_is_alternative(&self, q: usize, e: usize) -> bool {
+    /// Whether `|` starts an equation, and the end of the lookahead. Cache failed lookaheads
+    /// so a signature containing many absolute values is scanned only once.
+    fn bar_is_alternative(&self, q: usize, e: usize) -> (bool, usize) {
         let toks = self.toks;
-        if toks[q].lead {
-            return true;
-        }
         let mut depth = 0i32;
         let mut j = q + 1;
-        while j < e && !toks[j].lead {
+        while j < e {
             match toks[j].kind {
                 Kind::Open => depth += 1,
+                Kind::Close if depth == 0 => return (false, j),
                 Kind::Close => depth -= 1,
-                Kind::FatArrow if depth == 0 => return true,
+                Kind::Assign if depth == 0 => return (false, j),
+                Kind::FatArrow if depth == 0 => return (true, j),
+                // A closing absolute-value bar or a proposition operator cannot be a pattern.
+                Kind::Bar if depth == 0 => {
+                    if toks[j].lead && !toks[q].lead {
+                        return (false, j);
+                    }
+                    if j + 1 < e && matches!(toks[j + 1].kind, Kind::Bar | Kind::Assign) {
+                        return (false, j + 1);
+                    }
+                }
+                Kind::Sym
+                    if depth == 0
+                        && matches!(
+                            self.text(j),
+                            "=" | "<"
+                                | ">"
+                                | "<="
+                                | ">="
+                                | "≤"
+                                | "≥"
+                                | "≠"
+                                | "∧"
+                                | "∨"
+                                | "↔"
+                                | "→"
+                        ) =>
+                {
+                    return (false, j);
+                }
+                Kind::Ident
+                    if depth == 0
+                        && matches!(
+                            toks[j].text(self.src),
+                            b"where" | b"deriving" | b"fun" | b"match" | b"by"
+                        ) =>
+                {
+                    return (false, j);
+                }
                 _ => {}
             }
             j += 1;
         }
-        false
+        (false, e)
+    }
+
+    /// End of a multiline `by` block, starting at its first tactic.
+    fn indented_tactic_end(&self, start: usize, e: usize) -> usize {
+        let toks = self.toks;
+        let indent = toks[start].col;
+        let mut depth = 0i32;
+        let mut line_col = indent;
+        let mut pending_binds = Vec::new();
+        let mut j = start;
+        while j < e {
+            let t = toks[j];
+            if depth == 0 && ((t.lead && t.col < indent) || t.kind == Kind::Close) {
+                break;
+            }
+            if t.lead {
+                line_col = t.col;
+                if depth == 0 && t.kind != Kind::Assign {
+                    // A `have h : P` tactic can open a goal without an assignment.
+                    pending_binds.retain(|&col| t.col > col);
+                }
+            }
+            match t.kind {
+                Kind::Open => depth += 1,
+                Kind::Close => depth -= 1,
+                Kind::Ident
+                    if depth == 0
+                        && matches!(
+                            t.text(self.src),
+                            b"let"
+                                | b"have"
+                                | b"obtain"
+                                | b"set"
+                                | b"letI"
+                                | b"haveI"
+                                | b"let_fun"
+                                | b"suffices"
+                                | b"replace"
+                        ) =>
+                {
+                    pending_binds.push(line_col);
+                }
+                Kind::Ident if depth == 0 && t.text(self.src) == b"where" => break,
+                Kind::Assign if depth == 0 && pending_binds.pop().is_none() => {
+                    // The declaration's value may follow the last tactic on the same line.
+                    break;
+                }
+                _ => {}
+            }
+            j += 1;
+        }
+        j
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -2138,10 +2359,31 @@ impl<'a> Reader<'a> {
             }
             if at_end || (depth == 0 && toks[j].kind == Kind::Comma) {
                 if entry < j {
-                    let sel = Span::new(toks[entry].start, toks[j - 1].end);
                     let named = entry + 1 < j
                         && toks[entry].kind == Kind::Ident
                         && toks[entry + 1].kind == Kind::Colon;
+                    let sel = Span::new(
+                        toks[entry].start,
+                        if named {
+                            toks[entry].end
+                        } else {
+                            toks[j - 1].end
+                        },
+                    );
+                    let mut base = if named { entry + 2 } else { entry };
+                    if base < j && toks[base].kind == Kind::Sym && toks[base].text(self.src) == b"@"
+                    {
+                        base += 1;
+                    }
+                    let parent_name = (plain && base < j && toks[base].kind == Kind::Ident)
+                        .then(|| self.text(base).to_string());
+                    let info = self.parsed.structures.entry(full.to_string()).or_default();
+                    info.namespace.clone_from(&self.prefix);
+                    if let Some(name) = parent_name {
+                        info.parents.push(name);
+                    } else {
+                        info.unknown_parents = true;
+                    }
                     let proj = if named {
                         Some(self.text(entry).to_string())
                     } else {
@@ -2273,12 +2515,149 @@ impl<'a> Reader<'a> {
         out
     }
 
+    fn find_structure(&self, name: &str, namespace: &str) -> Option<(String, &StructureInfo)> {
+        let lookup = |key: &str| {
+            self.parsed
+                .structures
+                .get(key)
+                .or_else(|| self.ctx.and_then(|c| c.structures.get(key)))
+        };
+        let mut prefix = namespace;
+        loop {
+            let key = if let Some(root) = name.strip_prefix("_root_.") {
+                root.to_string()
+            } else if prefix.is_empty() {
+                name.to_string()
+            } else {
+                format!("{prefix}.{name}")
+            };
+            if let Some(info) = lookup(&key) {
+                return Some((key, info));
+            }
+            if prefix.is_empty() || name.starts_with("_root_.") {
+                return None;
+            }
+            prefix = prefix.rsplit_once('.').map_or("", |(p, _)| p);
+        }
+    }
+
+    /// Add known fields of a parent. A missing or ambiguous parent stays unresolved.
+    fn structure_fields(
+        &self,
+        name: &str,
+        namespace: &str,
+        visited: &mut std::collections::HashSet<String>,
+        fields: &mut std::collections::HashSet<String>,
+    ) -> bool {
+        let Some((key, info)) = self.find_structure(name, namespace) else {
+            return false;
+        };
+        if !visited.insert(key.clone()) {
+            return false;
+        }
+        fields.extend(info.fields.iter().cloned());
+        let mut complete = !info.unknown_parents;
+        for parent in &info.parents {
+            complete &= self.structure_fields(parent, &info.namespace, visited, fields);
+        }
+        visited.remove(&key);
+        complete
+    }
+
+    /// Resolve an explicitly requested projection on a directly annotated structure type.
+    /// Default projection recursion and inferred result types still require elaboration.
+    fn simps_projection_name(
+        &self,
+        parent: Option<u32>,
+        full: &str,
+        projection: &str,
+    ) -> (String, bool) {
+        let fallback = || (format!("{full}_{projection}"), true);
+        let Some(decl) = parent.and_then(|p| self.parsed.decls.get(p as usize)) else {
+            return fallback();
+        };
+        let Some(ty) = decl.type_ else {
+            return fallback();
+        };
+        let start = self.toks.partition_point(|t| t.start < ty.start);
+        let end = self.toks.partition_point(|t| t.start < ty.end);
+        if start >= end || self.toks[start].kind != Kind::Ident {
+            return fallback();
+        }
+        // An arrow or top-level operator makes this an expression rather than a direct type application.
+        let mut depth = 0i32;
+        for t in &self.toks[start + 1..end] {
+            match t.kind {
+                Kind::Open => depth += 1,
+                Kind::Close => depth -= 1,
+                Kind::Sym | Kind::FatArrow | Kind::Colon | Kind::Comma if depth == 0 => {
+                    return fallback();
+                }
+                _ => {}
+            }
+        }
+        let Some((target, _)) = self.find_structure(self.text(start), &self.prefix) else {
+            return fallback();
+        };
+        let matches = |config: &&SimpsProjectionConfig| {
+            self.find_structure(&config.target, &config.namespace)
+                .is_some_and(|(name, _)| name == target)
+        };
+        let mut configs: Vec<_> = self
+            .parsed
+            .simps_projections
+            .iter()
+            .filter(matches)
+            .collect();
+        if configs.is_empty()
+            && let Some(ctx) = self.ctx
+        {
+            configs.extend(ctx.simps_projections.iter().filter(matches));
+        }
+        if configs.is_empty() {
+            return fallback();
+        }
+        let prefix = configs[0].prefixes.contains(projection);
+        if configs
+            .iter()
+            .any(|c| c.prefixes.contains(projection) != prefix)
+        {
+            return fallback();
+        }
+        if prefix {
+            let (namespace, short) = full.rsplit_once('.').unwrap_or(("", full));
+            let name = if namespace.is_empty() {
+                format!("{projection}_{short}")
+            } else {
+                format!("{namespace}.{projection}_{short}")
+            };
+            (name, false)
+        } else if !projection.contains('_') {
+            (format!("{full}_{projection}"), false)
+        } else {
+            fallback()
+        }
+    }
+
     /// Fields and an explicit constructor of a structure body in `[a, b)`.
     /// Returns true if the constructor is written (`mk ::`).
     fn fields(&mut self, parent: u32, full: &str, a: usize, b: usize, extends: bool) -> bool {
         let toks = self.toks;
         let mut a = a;
         let mut ctor = false;
+        let info = self.parsed.structures.entry(full.to_string()).or_default();
+        info.namespace.clone_from(&self.prefix);
+        let parents = info.parents.clone();
+        let mut inherited = std::collections::HashSet::new();
+        let mut complete = !info.unknown_parents;
+        for name in parents {
+            complete &= self.structure_fields(
+                &name,
+                &self.prefix,
+                &mut std::collections::HashSet::new(),
+                &mut inherited,
+            );
+        }
         // Explicit constructor `mods ident binders* ::`.
         let c = skip_chain(self.src, toks, a);
         if c < b && toks[c].kind == Kind::Ident {
@@ -2319,6 +2698,7 @@ impl<'a> Reader<'a> {
             let t = toks[c];
             let mut names = Vec::new();
             let mut type_ = None;
+            let mut approximate = false;
             match t.kind {
                 Kind::Open => {
                     // `(x y : T)`, `{K : Type} [inst : DecidableEq K]`: every binder group.
@@ -2352,10 +2732,23 @@ impl<'a> Reader<'a> {
                             _ => {}
                         }
                     }
-                    // Without `extends`, `x := v` declares a field whose type is inferred; with
-                    // it, `x := v` usually overrides the default of an inherited field, unless
-                    // it carries its own doc comment.
-                    if colon.is_some() || (assign.is_some() && (!extends || doc.is_some())) {
+                    if colon.is_none() && assign.is_some() && extends {
+                        self.parsed.needs_structure_context = true;
+                        let name = self.text(c).replace(['«', '»'], "");
+                        self.parsed
+                            .structures
+                            .get_mut(full)
+                            .unwrap()
+                            .fields
+                            .insert(name.clone());
+                        // A documented default still belongs to the inherited field. If a
+                        // parent's source is unavailable, keep the candidate but mark it uncertain.
+                        if inherited.contains(&name) {
+                            continue;
+                        }
+                        approximate = !complete;
+                    }
+                    if colon.is_some() || assign.is_some() {
                         names.push(c);
                         let end = assign.unwrap_or(e);
                         if let Some(col) = colon
@@ -2369,7 +2762,14 @@ impl<'a> Reader<'a> {
             }
             for j in names {
                 let sel = Span::new(toks[j].start, toks[j].end);
-                let field_name = format!("{full}.{}", self.text(j).replace(['«', '»'], ""));
+                let short_name = self.text(j).replace(['«', '»'], "");
+                self.parsed
+                    .structures
+                    .get_mut(full)
+                    .unwrap()
+                    .fields
+                    .insert(short_name.clone());
+                let field_name = format!("{full}.{short_name}");
                 let field_idx = self.parsed.decls.len() as u32;
                 self.push(Decl {
                     kind: DeclKind::Field,
@@ -2386,7 +2786,7 @@ impl<'a> Reader<'a> {
                     modifiers: mods,
                     parent: Some(parent),
                     origin: None,
-                    approximate: false,
+                    approximate,
                 });
                 if attrs.0 < attrs.1 {
                     self.attribute_decls(
