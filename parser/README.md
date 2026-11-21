@@ -1,0 +1,262 @@
+# lean-source
+
+A Lean 4 source parser that needs no build. For every `.lean` file it finds the commands and declarations and reports, for each declaration, its kind, fully qualified name, doc comment, attributes, modifiers and the byte and line/column spans of the whole declaration, its name, signature, type and body. Positions follow Lean's convention (1-based lines, 0-based columns in code points), and the range and selection spans are the ones Lean stores in `DeclarationRanges`.
+
+On Mathlib it finds all 274,399 declarations written with a declaration command, field or constructor, with the same range and selection as Lean. Of the 2,846 constants that attributes create under a name written in the attribute (`@[to_additive foo]`, `@[simps a b]`, `attribute [ext] X`), it finds all but 6. For the 46,516 constants whose names attributes derive by rule it reproduces 58% exactly, and 95% of the derived names it emits exist. It parses Mathlib's 8,624 files in about 45 ms on 24 threads (about 70 ms reading them as one project), and it is validated on the Lean core of every release from v4.25.0 to v4.37.0-rc1, on v4.0.0, v4.9.0, v4.15.0 and the nightly of 2026-11-20, and on four Mathlib trees built with v4.30.0 to v4.37.0-rc1.
+
+Within LeanExplore it is meant for indexing projects that are not built and for separating statements from proofs. It is not yet used by `lean_explore.extract`.
+
+The directory has three crates:
+
+- `crates/lean-source`: the library (lexer, command segmenter, declaration reader, positions, JSON output).
+- `crates/lean-source-cli`: the `lean-source` command, which writes JSON Lines over files or whole trees.
+- `crates/lean-source-py`: Python bindings (`lean_source_parser`), built with maturin.
+
+## Usage
+
+Command line:
+
+```
+cargo build --release -p lean-source-cli
+lean-source --root path/to/project path/to/project/Project -o decls.jsonl
+lean-source --commands --root path/to/project path/to/project/Project -o commands.jsonl
+lean-source --stats --root path/to/mathlib path/to/mathlib/Mathlib
+```
+
+With more than one file the command treats its input as a project: a first pass collects the declarations each file writes and the translations `to_additive` and `to_dual` register, and files that use those attributes are read again against them. `--text` adds the source of each declaration's signature and doc comment. `--commands` writes one object per command instead (`open`, `variable`, `namespace`, declarations and so on, each with the namespace in effect), which is what a tool needs to rebuild the context of a statement. `--jobs N` sets the number of threads. `--no-project` reads every file on its own, which is faster but leaves translation names to the dictionary guess. `--translation-ranges-at-name` records `to_additive`/`to_dual` ranges at the written name, as Mathlib does from November 2026 (master 3eae40f5); earlier Mathlib records the attribute instance, which is the default.
+
+Each declaration object has `file`, `module`, `index`, `kind`, `name`, `generated`, `approximate`, `origin`, `parent`, `modifiers`, `attributes`, and the spans `range`, `selection`, `signature`, `type`, `body` and `doc`. A span is `[start_byte, start_line, start_col, end_byte, end_line, end_col]`. `parent` is the index of the enclosing declaration for fields, constructors, `where` and `let rec` declarations, and of the owner for generated declarations. Names print as Lean prints them, so `«exists»` becomes `exists` while `«term⟪_⟫»` keeps its escapes.
+
+`generated` marks constants that the source does not declare with a command of their own:
+
+- default constructors `mk`, parent projections `toX` and `foo_def` from `irreducible_def`;
+- constants created by an attribute, with `origin` set to the attribute: `to_additive`, `to_dual`, `to_fun`, `simps`, `simps!`, `mk_iff`, `higher_order`, `reassoc`, `elementwise`, `ext`, and the command `mk_iff_of_inductive_prop`.
+
+`approximate` is true when the name comes from a naming rule rather than from the source: `to_additive` and `to_dual` without a written name (Mathlib's `guessName` and dictionaries, ported in `translate.rs` and generated from Mathlib by `tools/gen_translate_tables.py`), `reassoc` (`_assoc`), `elementwise` (`_apply`) and `mk_iff` without a name (`foo_iff`). Their range is the attribute instance, as Lean records it.
+
+Python:
+
+```
+cd crates/lean-source-py && maturin develop --release
+```
+
+```python
+import lean_source_parser as lsp
+
+decls = lsp.parse(text, file="FLT/Foo.lean", module="FLT.Foo", text=True)
+per_file = lsp.parse_files(paths, root="path/to/project")  # parallel, one project, releases the GIL
+commands = lsp.commands(text)
+```
+
+Rust:
+
+```rust
+let parsed = lean_source::parse(source.as_bytes());
+for d in &parsed.decls {
+    println!("{:?} {:?} {:?}", d.kind, d.name, d.range);
+}
+
+// A project: parse every file once, collect, then read again with the context.
+let mut ctx = lean_source::Context::default();
+for p in &first_pass {
+    ctx.add(p);
+}
+let parsed = lean_source::parse_in(source.as_bytes(), &ctx);
+```
+
+### Indexing a project that is not built
+
+`parse_files` over the sources gives names, statements (`signature`, `type`), proofs (`body`) and doc comments without compiling anything. On FLT (261 files, unbuilt) it returns 3,930 declarations in under 5 ms. What it cannot give is anything that needs elaboration: inferred types, the dependency graph, and declarations generated by attributes or by Lean's naming rules (see Known gaps). Those still need Lean.
+
+## How it works
+
+The lexer (`lexer.rs`) follows `Lean/Parser/Basic.lean`: nested block comments, doc and module-doc comments as tokens, strings with escapes and gaps, raw strings, interpolated strings whose `{...}` holds terms with strings of their own, character and name literals, numbers, and identifiers built from Lean's `isIdFirst` and `isIdRest` (including the Latin-1, Greek, letter-like and subscript ranges of Lean v4.35.0) with `«»` escapes and dotted components. It works on bytes, uses `memchr` to skip comments and strings, and needs no token table: keywords are identifiers that the scanner classifies.
+
+The scanner (`scan.rs`) splits the token stream into commands, then reads each one.
+
+A command starts at a line-leading keyword that cannot occur inside a term (`theorem`, `def`, `structure`, `namespace`, `attribute`, `notation`, ...), at the doc comment, attributes and modifiers in front of one, after the `in` of `open ... in`, `set_option ... in`, `omit ... in` and similar prefixes, or at a line-leading keyword or user-defined command at command indentation that follows a complete term. The last rule mirrors Lean, where an application argument must be indented further than the command, so a token at the command's column after a finished term begins a new command. Exceptions handle the cases where Lean's grammar says otherwise: keywords after `.` or `|` are names (`p.end`, `| opaque`), doc comments can be arguments (`library_note`, `#adaptation_note`), tactic and `where` blocks can sit at column zero, and JSX text can contain keywords.
+
+The reader tracks `namespace`, `section`, `end` and `mutual`, applies `_root_` and `scoped[NS]`, and for each declaration records the modifiers in `declModifiers` order, the name (with `.{u}` universe parameters in the selection where Lean puts them), and the signature, type and body. It also emits the nested declarations that the source names: structure fields (including binder groups and inferred-type fields), written constructors of structures and inductives, `where` declarations and `let rec` declarations (named after their enclosing `let rec` when nested). Spans follow `Lean/Elab/DeclarationRange.lean`: the range covers the modifiers and the whole declaration syntax, the selection is the name or, for an anonymous instance, the `instance` keyword; `macro` and `declare_config_elab` record their range from the keyword, and `where` and `let rec` ranges start at the name and stop before `termination_by`.
+
+## Validation
+
+The reference is Lean itself. `validation/DumpRanges.lean` imports a built environment and writes the `DeclarationRanges` (range and selection) of every constant, the data doc-gen4 uses for source links. `validation/compare.py` matches the parser's declarations to those constants by fully qualified name (anonymous instances by position) and classifies each constant by what the source says about it:
+
+- declaration: the selection text is the constant's name, and the range covers a command;
+- field and constructor: the selection is a written field or constructor name;
+- anonymous instance: an `instance` without a written name, matched by position;
+- generated: the name comes from an attribute (`to_additive`, `to_dual`, `simps`, `ext`), from a default constructor or parent projection, or from notation and auxiliary definitions.
+
+Recall is over every module with a source file; precision is over the parser's declarations in modules the environment contains.
+
+### Mathlib
+
+Mathlib at 56a00585 built with Lean v4.35.0: 8,624 files, 585,358 constants, 341,717 of them with ranges. The parser was developed against this set.
+
+| Category | Constants | Recall | Range start | Range end | Selection | Exact |
+|---|---|---|---|---|---|---|
+| declaration | 250,618 | 100.0000% | 100.0000% | 100.0000% | 100.0000% | 100.0000% |
+| field | 7,272 | 100.0000% | 100.0000% | 100.0000% | 100.0000% | 100.0000% |
+| constructor | 1,274 | 100.0000% | 100.0000% | 100.0000% | 100.0000% | 100.0000% |
+| anonymous instance | 15,235 | 100.0000% | 100.0000% | 100.0000% | 100.0000% | 100.0000% |
+| all authored | 274,399 | 100.0000% | 100.0000% | 100.0000% | 100.0000% | 100.0000% |
+| generated constructor | 3,548 | 100.0000% | 100.0000% | 100.0000% | 100.0000% | 100.0000% |
+| generated parent projection | 990 | 94.95% | 100.0000% | 100.0000% | 100.0000% | 100.0000% |
+| generated by attribute | 53,903 | 50.18% | 99.98% | 99.96% | 99.67% | 99.66% |
+
+Exact means range start, range end and selection all equal Lean's, measured over the declarations found. Precision over the parser's authored declarations is 274,786 / 274,792 (99.9978%). Four of the six extra declarations are `x := v` lines in structures that extend others, which declare a new field or override an inherited default depending on the parents; the other two are instances that the built environment does not contain. Precision over generated declarations is 32,060 / 33,361 (96.10%).
+
+An independent check (`validation/independent_check.py`, which matches by exact name and does not use `compare.py`) found 2,846 constants whose name is written verbatim in the source but which the parser did not emit; most came from attributes such as `@[to_additive name]`, `@[to_dual name]` and `@[simps! a b]`. Before and after emitting attribute-generated declarations:
+
+| | Before | After |
+|---|---|---|
+| Reference constants with ranges (not internal) | 325,274 | 325,274 |
+| Found by name | 261,294 | 287,385 |
+| Range exact among found | 99.9981% | 99.9965% |
+| Selection exact among found | 99.9862% | 99.9582% |
+| Name written in the source but not emitted | 2,846 | 6 |
+
+The six left are names produced by attributes nested inside a translation, such as `(attr := to_additive, simp)` or `(attr := simps a b)` within `to_additive`.
+
+Declarations that attributes generate, by the attribute that produced them (`validation/attributes.py`; a reference constant counts for an attribute when Lean records its range at that attribute):
+
+| Attribute | Reference | Found | Exact | Emitted | Emitted that exist |
+|---|---|---|---|---|---|
+| to_additive | 16,328 | 88.53% | 88.53% | 15,260 | 94.98% |
+| to_dual | 4,585 | 89.77% | 89.64% | 4,256 | 96.83% |
+| simps | 10,426 | 9.25% | 9.25% | 1,030 | 93.79% |
+| simps! | 8,046 | 22.21% | 22.21% | 1,863 | 96.08% |
+| reassoc | 4,260 | 84.53% | 84.53% | 3,805 | 95.43% |
+| elementwise | 228 | 78.95% | 78.95% | 212 | 84.91% |
+| mk_iff | 329 | 96.96% | 96.96% | 321 | 99.38% |
+| ext | 1,707 | 88.81% | 83.71% | 1,555 | 97.36% |
+| higher_order | 20 | 60.00% | 60.00% | 16 | 75.00% |
+| to_fun | 587 | 19.93% | 19.93% | 117 | 100.00% |
+| all | 46,516 | 58.19% | 57.99% | 28,439 | 95.46% |
+
+Names written in an attribute are exact. The ceiling for the rest is set by what the source does not say: `simps` without arguments names one lemma per projection of the structure in the definition's type, which needs that structure's fields and its `initialize_simps_projections` settings, usually from another file; `to_fun` without a name and `higher_order` without a name follow rules that depend on the elaborated statement; and `to_additive`/`to_dual` names guessed from the dictionary miss where a namespace translation is registered in a way the source of the project does not show. Measured on Mathlib, the guessed names that the parser emits are right 95% of the time.
+
+### Held-out packages
+
+The dependencies of the same environment were not looked at while developing the parser. The first run on them, before any change, gave:
+
+| Package | Authored | Recall | Exact | Precision |
+|---|---|---|---|---|
+| Lean core (Init, Std, Lean) | 85,579 | 99.94% | 99.98% | 99.91% |
+| Batteries | 3,769 | 99.97% | 99.97% | 99.97% |
+| Aesop | 2,263 | 100.00% | 100.00% | 100.00% |
+| Qq | 201 | 100.00% | 99.50% | 100.00% |
+| ProofWidgets | 180 | 100.00% | 99.44% | 99.46% |
+| Plausible | 253 | 100.00% | 100.00% | 100.00% |
+| ImportGraph | 531 | 99.44% | 99.81% | 99.63% |
+
+After fixing the generic issues these runs exposed (keyword constructor names, `finally` and fixpoint clauses, nested `let rec`, fields named like keywords), all packages but Lean core reach 100% recall and exact spans except one Batteries declaration, and Lean core reaches 99.97% recall and 99.997% exact spans. Most of the remaining Lean core misses are `where` declarations inside anonymous instances, whose names start with the generated instance name.
+
+### Lean versions
+
+`validation/versions.sh` repeats the comparison on the Lean core (`Init`, `Std`, `Lean`) shipped with every installed toolchain, against the ranges in that toolchain's own `.olean` files, and on four built Mathlib trees. Nothing is built: the references come from the shipped or cached `.olean` files. "Authored" columns come from `compare.py`; the last four from the independent check, over every constant with a range.
+
+| Tree | Lean | Authored | Found | Range start | Exact | Precision | Reference | Found by name | Range exact | Selection exact | Written, missed |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| Lean core | v4.0.0 | 17,938 | 99.48% | 60.76% | 60.76% | 99.59% | 18,028 | 15,650 | 59.23% | 94.63% | 19 |
+| Lean core | v4.9.0 | 24,407 | 99.56% | 56.08% | 56.08% | 99.51% | 24,971 | 21,848 | 58.76% | 99.95% | 26 |
+| Lean core | v4.15.0 | 34,191 | 99.91% | 99.99% | 99.99% | 99.94% | 35,056 | 30,816 | 99.95% | 99.93% | 30 |
+| Lean core | v4.25.0 | 73,809 | 99.94% | 99.996% | 99.99% | 99.91% | 75,050 | 66,564 | 99.99% | 99.98% | 54 |
+| Lean core | v4.26.0 | 75,443 | 99.93% | 99.996% | 99.99% | 99.91% | 76,503 | 67,882 | 99.99% | 99.98% | 58 |
+| Lean core | v4.27.0 | 79,357 | 99.93% | 99.996% | 99.99% | 99.92% | 80,319 | 71,545 | 99.99% | 99.98% | 64 |
+| Lean core | v4.28.0 | 82,094 | 99.94% | 99.996% | 99.99% | 99.92% | 81,591 | 72,746 | 99.995% | 99.98% | 64 |
+| Lean core | v4.29.0 | 84,088 | 99.94% | 99.996% | 99.99% | 99.93% | 83,195 | 74,230 | 99.995% | 99.98% | 64 |
+| Lean core | v4.30.0 | 87,130 | 99.93% | 99.997% | 99.99% | 99.93% | 85,950 | 76,653 | 99.995% | 99.98% | 64 |
+| Lean core | v4.31.0 | 89,908 | 99.93% | 100.00% | 99.997% | 99.93% | 87,835 | 78,978 | 99.999% | 99.98% | 72 |
+| Lean core | v4.32.0 | 90,109 | 99.93% | 100.00% | 99.997% | 99.93% | 87,835 | 78,984 | 99.999% | 99.98% | 72 |
+| Lean core | v4.33.1 | 91,000 | 99.93% | 100.00% | 99.997% | 99.93% | 88,579 | 79,623 | 99.999% | 99.98% | 98 |
+| Lean core | v4.34.1 | 91,840 | 99.93% | 100.00% | 99.997% | 99.93% | 89,282 | 80,230 | 99.999% | 99.98% | 100 |
+| Lean core | v4.35.0 | 91,827 | 99.93% | 100.00% | 99.997% | 99.93% | 89,052 | 80,130 | 99.999% | 99.98% | 100 |
+| Lean core | v4.36.0 | 93,664 | 99.92% | 100.00% | 99.997% | 99.92% | 90,621 | 81,432 | 99.999% | 99.98% | 108 |
+| Lean core | v4.37.0-rc1 | 97,024 | 99.92% | 100.00% | 99.997% | 99.92% | 93,334 | 83,650 | 99.999% | 99.98% | 110 |
+| Lean core | nightly-2026-11-20 | 97,137 | 99.92% | 100.00% | 99.997% | 99.92% | 93,375 | 83,691 | 99.999% | 99.98% | 110 |
+| Mathlib c5ea0035 | v4.30.0 | 260,822 | 100.00% | 99.996% | 99.995% | 99.998% | 307,321 | 272,439 | 99.993% | 99.97% | 8 |
+| Mathlib 1b0782d8 | v4.32.0-rc1 | 265,483 | 100.00% | 100.00% | 99.999% | 99.998% | 312,689 | 277,251 | 99.997% | 99.99% | 8 |
+| Mathlib 56a00585 | v4.35.0 | 274,399 | 100.00% | 100.00% | 100.00% | 99.998% | 325,276 | 287,385 | 99.997% | 99.99% | 6 |
+| Mathlib master 3eae40f5 | v4.37.0-rc1 | 279,388 | 100.00% | 100.00% | 100.00% | 99.998% | 331,593 | 292,768 | 99.995% | 99.99% | 15 |
+
+The toolchains v4.30.0-rc2, v4.32.0-rc1 and v4.34.0-rc2 give the same figures as their releases. Mathlib master runs with `--translation-ranges-at-name`.
+
+Lean v4.0.0 and v4.9.0 recorded a declaration's range from its keyword, without the doc comment and attributes; from v4.15.0 the range includes them, as the parser reports. Range ends and selections agree on those versions too (99.98% and 100% of authored declarations). The "written, missed" counts in Lean core are core-only commands (`make_elab_grind_config`, `declare_simp_like_tactic`, `add_decl_doc`), `where` declarations inside anonymous instances, and a few `let rec` and `where` declarations with attributes. Lean 3 is out of scope.
+
+The release notes of v4.36.0 and v4.37.0-rc1 add no command-level syntax that needed new rules (contract clauses, `where finally` with alternatives and the HTML term syntax are handled). Running the new toolchains did expose one lexer bug, fixed: in an interpolated string, a prime closing an identifier inside `{...}` (`{"".pushn ch open'}`) was read as the start of a character literal.
+
+### Remaining mismatches
+
+What is left cannot be read off the source:
+
+- Names that attributes derive from information outside the source: default `simps` projections, `to_fun` and `higher_order` without a written name, and translations whose namespace mapping is registered implicitly. The parser emits the rule-based names it can derive and marks them `approximate`.
+- Anonymous instance names (`instToExprInt`) come from the elaborated type. The instances themselves are found and matched by position; `where` declarations inside them cannot be named.
+- Parent projections of `extends` entries written with notation (`G ≃ H`) or abbreviations that unfold to another structure.
+- Whether `x := v` in a structure that extends others declares a field.
+- Constants from `macro_rules`, `elab_rules`, notation without `(name := ...)`, `deriving` handlers, `initialize` without a name and other auxiliary definitions.
+
+## Comparison with tree-sitter-lean4
+
+tree-sitter-lean4 0.2.1, the Lean 4 grammar published for tree-sitter, is the closest tool that also parses without a build. It is scored with the same reference and the same rules, with the grammar's external scanner compiled in, since the published crate omits it:
+
+| | lean-source | tree-sitter-lean4 0.2.1 |
+|---|---|---|
+| Authored declarations found | 100.00% | 26.83% |
+| Exact spans among those found | 100.00% | 82.72% |
+| Precision | 99.998% | 75.20% |
+| Files parsed without errors | not applicable | 0 of 8,624 |
+| Time, 24 threads (one file at a time) | 41 to 53 ms | 2,066 ms |
+| Time, 1 thread (one file at a time) | 425 ms | 38,076 ms |
+
+The grammar has no rules for fields, constructors, `where` or `let rec` declarations or anonymous instance positions, and its parse of every Mathlib file contains error nodes (2.4 million in total).
+
+## Speed
+
+Measured on an Intel Core Ultra 9 275HX (24 cores) on Linux, over Mathlib's 98.9 MB of source:
+
+| | Time | Throughput |
+|---|---|---|
+| Lexer, 1 thread (criterion, in memory) | 177 ms | 531 MiB/s |
+| Parse one file at a time, 1 thread (criterion, in memory) | 385 ms | 245 MiB/s |
+| `lean-source --no-project --stats`, 1 thread, reading files | 425 ms | 233 MB/s |
+| `lean-source --no-project --stats`, 24 threads, reading files | 41 to 53 ms | about 2 GB/s |
+| `lean-source --stats` (project), 1 thread | 527 ms | 188 MB/s |
+| `lean-source --stats` (project), 24 threads | 70 to 76 ms | about 1.4 GB/s |
+| `lean-source` (project), 24 threads, writing JSON Lines | 0.16 s | |
+
+Project mode reads Mathlib once, builds the context, and reads again the 889 files that use `to_additive` or `to_dual`. The design choices that matter: one pass over bytes with `memchr` for comments, strings and line starts; tokens of 16 bytes in a buffer reused per thread; command detection only on line-leading tokens; byte searches with prebuilt `memmem` finders before looking for `where` and `let rec`; translation dictionaries built once and shared; files in parallel with rayon; mimalloc as the command's allocator, which matters once every file's result is kept in memory at the same time. Generated DFA lexers such as [logos](https://docs.rs/crate/logos/latest/source/README.md) compile a fixed token set into a state machine. Lean's token set grows with every `notation` and `syntax` command, so this lexer splits only what the scanner needs and classifies identifiers afterwards.
+
+Benchmarks: `LEAN_SOURCE_BENCH_DIR=path/to/Mathlib cargo bench -p lean-source`, and `cargo run --release --example phases -- path/to/Mathlib` for lexer and scanner times.
+
+## Reproducing the validation
+
+```
+# Reference ranges from a built environment (about 2 minutes and 9 GB for Mathlib).
+cd path/to/workspace-with-mathlib
+lake env lean --run path/to/validation/DumpRanges.lean ranges.jsonl Mathlib Mathlib
+
+# Parser output and comparison.
+lean-source --root path/to/mathlib path/to/mathlib/Mathlib -o parser.jsonl
+python3 validation/compare.py ranges.jsonl parser.jsonl path/to/mathlib --report report/
+
+# Held-out packages: dump with an empty prefix to include every module, then
+validation/heldout.sh all-ranges.jsonl path/to/workspace path/to/toolchain/src/lean out/
+
+# Attribute-generated declarations, per attribute.
+python3 validation/attributes.py ranges.jsonl parser.jsonl path/to/mathlib
+
+# Every installed toolchain's Lean core, plus built Mathlib trees given as
+# "label toolchain-dir workspace-dir" lines; nothing is built.
+MATHLIB_ROWS="..." validation/versions.sh out/ validation/independent_check.py
+
+```
+
+## Prior art
+
+- Lean's own parser ([Lean/Parser/Command.lean](https://github.com/leanprover/lean4/blob/master/src/Lean/Parser/Command.lean), [Lean/Parser/Basic.lean](https://github.com/leanprover/lean4/blob/master/src/Lean/Parser/Basic.lean)) is exact but needs the environment of every import, because notation, tactics and commands are extensible. Declaration ranges are stored during elaboration ([Lean/Elab/DeclarationRange.lean](https://lean-lang.org/doc/api/Lean/Elab/DeclarationRange.html), [Lean.Data.DeclarationRange](https://lean-lang.org/doc/api/Lean/Data/DeclarationRange.html)) and read back with `findDeclarationRanges?`, which is what doc-gen4 uses for source links ([Zulip](https://leanprover-community.github.io/archive/stream/270676-lean4/topic/Ranges.20for.20Go-to-definition.html)). This parser reproduces those ranges without elaborating.
+- tree-sitter-lean4 ([crate](https://docs.rs/crate/tree-sitter-lean4/0.2.1), from [Julian/tree-sitter-lean](https://github.com/Julian/tree-sitter-lean)) is a grammar for editors; its README notes that Lean's extensibility limits what a fixed grammar can parse. Measured above.
+- LeanDojo traces a built repository to extract declarations, tactic states and premises; tracing Mathlib takes about an hour on 32 CPUs and at least 32 GB of memory ([documentation](https://leandojo.readthedocs.io/en/latest/limitations.html), [paper](https://arxiv.org/abs/2306.15626)).
+- jixia ([Reservoir](https://reservoir.lean-lang.org/@reaslab/jixia)) is a static analysis tool that must be built with the same Lean version as the files it analyzes; LeanSearch v2 uses it to extract Mathlib declarations before informalization ([paper](https://arxiv.org/pdf/2605.13137)). LeanSearch ([paper](https://arxiv.org/abs/2403.13310)) and LeanExplore ([paper](https://arxiv.org/abs/2506.11085)) index declarations extracted from built projects; Moogle has not published its pipeline.
+- The Lean REPL ([README](https://raw.githubusercontent.com/leanprover-community/repl/master/README.md)) elaborates commands sent as JSON and needs a build of the project and a matching Lean version.
+- Byte search uses [memchr](https://docs.rs/crate/memchr/latest), which has SIMD routines for x86-64, aarch64 and wasm32.

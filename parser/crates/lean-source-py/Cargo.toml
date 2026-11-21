@@ -1,0 +1,16 @@
+[package]
+name = "lean-source-py"
+description = "Python bindings of lean-source."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish = false
+
+[lib]
+name = "_native"
+crate-type = ["cdylib"]
+
+[dependencies]
+lean-source = { path = "../lean-source" }
+pyo3 = { version = "0.30", features = ["extension-module", "abi3-py310"] }
+rayon = "1"

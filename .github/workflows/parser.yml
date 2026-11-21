@@ -1,0 +1,50 @@
+name: Parser
+
+on:
+  push:
+    branches:
+      - main
+      - development
+    paths:
+      - "parser/**"
+      - ".github/workflows/parser.yml"
+  pull_request:
+    paths:
+      - "parser/**"
+      - ".github/workflows/parser.yml"
+
+jobs:
+  parser:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: parser
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Rust
+        run: |
+          rustup toolchain install stable --profile minimal --component clippy,rustfmt
+          rustup default stable
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Check formatting
+        run: cargo fmt --all --check
+
+      - name: Lint
+        run: cargo clippy --workspace --all-targets -- -D warnings
+
+      - name: Test
+        run: cargo test --workspace
+
+      - name: Build and import the Python bindings
+        run: |
+          pip install "maturin>=1.7,<2"
+          maturin build --release -m crates/lean-source-py/Cargo.toml -o dist
+          pip install dist/*.whl
+          python -c "import lean_source_parser as p; d = p.parse('theorem t : True := trivial'); assert d[0]['name'] == 't', d"

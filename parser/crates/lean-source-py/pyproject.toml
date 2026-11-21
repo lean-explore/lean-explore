@@ -1,0 +1,17 @@
+[build-system]
+requires = ["maturin>=1.7,<2"]
+build-backend = "maturin"
+
+[project]
+name = "lean-source-parser"
+version = "0.1.0"
+description = "Build-free Lean 4 source parser: declarations and their spans."
+requires-python = ">=3.10"
+license = { text = "Apache-2.0" }
+
+[project.optional-dependencies]
+test = ["pytest>=8"]
+
+[tool.maturin]
+python-source = "python"
+module-name = "lean_source_parser._native"

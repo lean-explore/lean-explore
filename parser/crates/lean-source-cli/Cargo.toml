@@ -1,0 +1,18 @@
+[package]
+name = "lean-source-cli"
+description = "Command-line front end of lean-source: JSON Lines over files and trees."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "lean-source"
+path = "src/main.rs"
+
+[dependencies]
+lean-source = { path = "../lean-source" }
+rayon = "1"
+walkdir = "2"
+memmap2 = "0.9"
+memchr = "2"
+mimalloc = { version = "0.1", default-features = false }
