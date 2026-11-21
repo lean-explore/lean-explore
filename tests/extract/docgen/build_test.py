@@ -4,6 +4,7 @@ Lake is never invoked: ``subprocess`` and ``time`` are replaced with fakes
 that record commands and sleeps.
 """
 
+import dataclasses
 from types import SimpleNamespace
 
 import pytest
@@ -20,6 +21,7 @@ from lean_explore.extract.docgen.build import (
     _uses_sqlite_docgen,
     run_doc_gen4,
 )
+from lean_explore.extract.packages.config import ExtractionMethod
 from lean_explore.extract.packages.registry import PACKAGE_REGISTRY
 
 SQLITE_TOOLCHAIN = "leanprover/lean4:v4.29.0-rc2"
@@ -264,6 +266,31 @@ class TestRunDocGen4:
         """Without setup the toolchain is unknown, so the cache is cleared."""
         await run_doc_gen4(["flt"], setup=False, fresh=True)
         assert recorded_run == [("clear", build.Path("ws/flt")), ("lake", "flt")]
+
+    async def test_source_packages_are_fetched_not_built(
+        self, recorded_run, monkeypatch
+    ):
+        """A source package is fetched instead of set up and built."""
+        monkeypatch.setitem(
+            PACKAGE_REGISTRY,
+            "flt",
+            dataclasses.replace(
+                PACKAGE_REGISTRY["flt"], extraction=ExtractionMethod.SOURCE
+            ),
+        )
+        monkeypatch.setattr(
+            build,
+            "fetch_package_sources",
+            lambda config, root: recorded_run.append(("fetch", config.name, root)),
+        )
+
+        await run_doc_gen4(["mathlib", "flt"])
+
+        assert recorded_run == [
+            ("setup", "mathlib"),
+            ("lake", "mathlib"),
+            ("fetch", "flt", build.Path("ws")),
+        ]
 
     async def test_defaults_to_extraction_order(self, recorded_run):
         """All registry packages are processed, mathlib first."""

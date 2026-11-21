@@ -7,10 +7,14 @@ on:
       - development
     paths:
       - "parser/**"
+      - "src/lean_explore/extract/**"
+      - "tests/extract/**"
       - ".github/workflows/parser.yml"
   pull_request:
     paths:
       - "parser/**"
+      - "src/lean_explore/extract/**"
+      - "tests/extract/**"
       - ".github/workflows/parser.yml"
 
 jobs:
@@ -48,3 +52,9 @@ jobs:
           maturin build --release -m crates/lean-source-py/Cargo.toml -o dist
           pip install dist/*.whl
           python -c "import lean_source_parser as p; d = p.parse('theorem t : True := trivial'); assert d[0]['name'] == 't', d"
+
+      - name: Test source extraction with the bindings
+        working-directory: .
+        run: |
+          pip install -e . pytest pytest-asyncio
+          python -m pytest tests/extract/source tests/extract/docgen -q
