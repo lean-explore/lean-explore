@@ -212,7 +212,7 @@ end Foo
         [
             ("Foo.bar_add".to_string(), "to_additive", false),
             ("Foo.zero_add'".to_string(), "to_additive", true),
-            ("Foo.e_apply".to_string(), "simps", false),
+            ("Foo.e_apply".to_string(), "simps", true),
             ("Foo.rel_iff".to_string(), "mk_iff", true),
             ("Foo.hom_ext_iff".to_string(), "ext", false),
         ]
@@ -240,4 +240,156 @@ def «term⟪_⟫» := 1
 end P
 ";
     assert_eq!(names(src), ["P.exists", "P.«term⟪_⟫»"]);
+}
+
+fn assert_signature_body(signature: &str, expected_type: &str, body: &str) {
+    for separator in ["\n", " "] {
+        let src = format!("{signature}{separator}{body}\n");
+        let parsed = parse(src.as_bytes());
+        let d = &parsed.decls[0];
+        assert_eq!(
+            &src[d.signature.start as usize..d.signature.end as usize],
+            signature,
+            "{src}"
+        );
+        let span = d.body.expect("body");
+        assert_eq!(&src[span.start as usize..span.end as usize], body, "{src}");
+        let span = d.type_.expect("type");
+        let expected_type = expected_type.trim();
+        assert_eq!(
+            &src[span.start as usize..span.end as usize],
+            expected_type,
+            "{src}"
+        );
+    }
+}
+
+#[test]
+fn multiline_absolute_values_stay_in_the_signature() {
+    for ty in [
+        "\n    |x| = |x|",
+        "\n    |x\n      + 1| = |x + 1|",
+        "\n    |x\n    | = |x|",
+        "\n    0 ≤\n      |x|",
+        "\n    |x| = (fun y => |y|) x",
+        "\n    |x| = |x| ∧\n      |x + 1| = |x + 1|",
+    ] {
+        assert_signature_body(
+            &format!("theorem abs_test (x : Int) : {ty}"),
+            ty,
+            ":= by simp",
+        );
+    }
+}
+
+#[test]
+fn equation_bodies_can_start_on_the_same_or_following_line() {
+    for body in [
+        "| 0 => 0\n  | n + 1 => n",
+        "| 0\n      => 0\n  | n + 1 => n",
+        "| 0 | 1 => 0\n  | n + 2 => n",
+        "| (n : Nat) => n",
+    ] {
+        assert_signature_body("def f : Nat → Nat", "Nat → Nat", body);
+    }
+    let src = "def f : Nat → Nat | n => n";
+    let parsed = parse(src.as_bytes());
+    let d = &parsed.decls[0];
+    assert_eq!(&src[..d.signature.end as usize], "def f : Nat → Nat");
+    assert_eq!(&src[d.body.unwrap().start as usize..], "| n => n");
+}
+
+#[test]
+fn tactic_assignments_in_local_bindings_stay_in_the_signature() {
+    for ty in [
+        "∀ (hne : Nonempty Nat),\n    haveI : Nonempty Nat := by\n      obtain ⟨x⟩ := hne\n      exact ⟨x⟩\n    True",
+        "let n : Nat := by\n      let x := 1\n      have h : x = 1 := rfl\n      exact x\n    n = n",
+        "have h : True := by\n      have h' : True := by\n        let n := 1\n        trivial\n      exact h'\n    True",
+    ] {
+        assert_signature_body(&format!("theorem local_test : {ty}"), ty, ":= by trivial");
+    }
+}
+
+#[test]
+fn lambdas_in_types_do_not_swallow_equation_bodies() {
+    for ty in [
+        "∀ n : Nat, (fun x => x + n) = fun x => n + x",
+        "∀ n : Nat, Injective fun x : Int ↦ x + n",
+        "∀ x : Int, |x| = |x|",
+        "∀ x : Int, P |x|",
+    ] {
+        assert_signature_body(&format!("theorem t : {ty}"), ty, "| _ => by simp");
+    }
+}
+
+#[test]
+fn absolute_values_before_lambdas_stay_in_the_type() {
+    let ty = "|f| =ᵐ[μ] fun x => |f x|";
+    assert_signature_body(&format!("theorem t : {ty}"), ty, ":= by simp");
+}
+
+#[test]
+fn tactic_terms_in_types_can_contain_assignments() {
+    let ty = "∀ (h : True), P <| fun x => by\n    obtain ⟨a, b⟩ := x\n    exact h";
+    assert_signature_body(&format!("theorem t : {ty}"), ty, ":= by trivial");
+}
+
+#[test]
+fn many_absolute_values_preserve_the_whole_signature() {
+    let sum = std::iter::repeat_n("|x|", 4096)
+        .collect::<Vec<_>>()
+        .join(" + ");
+    let ty = format!("{sum} = {sum}");
+    assert_signature_body(&format!("theorem t (x : Int) : {ty}"), &ty, ":= rfl");
+}
+
+#[test]
+fn tactic_type_before_structure_instance_body() {
+    let ty = "by\n  letI := instInhabitedNat\n  exact Inhabited Nat";
+    assert_signature_body(
+        &format!("instance local_test : {ty}"),
+        ty,
+        "where\n  default := 0",
+    );
+}
+
+#[test]
+fn matches_in_return_types_end_before_dedented_equations() {
+    for ty in [
+        "∀ b : Bool,\n    match b with\n    | true => Nat\n    | false => Bool",
+        "∀ b : Bool,\n    match b with\n    | true =>\n      match b with\n      | true => Nat\n      | false => Nat\n    | false => Bool",
+    ] {
+        let signature = format!("def f : {ty}");
+        let body = "| true => 0\n  | false => false";
+        let src = format!("{signature}\n  {body}\n");
+        let parsed = parse(src.as_bytes());
+        let d = &parsed.decls[0];
+        assert_eq!(
+            &src[d.signature.start as usize..d.signature.end as usize],
+            signature
+        );
+        let span = d.body.unwrap();
+        assert_eq!(&src[span.start as usize..span.end as usize], body);
+    }
+}
+
+#[test]
+fn absolute_values_in_match_scrutinees_stay_in_the_signature() {
+    for ty in [
+        "match |x| with\n    | 0 => Nat\n    | _ => Nat",
+        "match\n      match |x| with\n      | n => n\n    with\n    | 0 => Nat\n    | _ => Nat",
+        "match (fun | 0 => 0 | n + 1 => n) |x| with\n    | 0 => Nat\n    | _ => Nat",
+    ] {
+        assert_signature_body(&format!("def sample (x : Int) :\n    {ty}"), ty, ":= sorry");
+    }
+    let signature = "def sample : ∀ x : Int,\n    match |x| with\n    | 0 => Nat\n    | _ => Nat";
+    let body = "| _ => 0";
+    let src = format!("{signature}\n  {body}\n");
+    let parsed = parse(src.as_bytes());
+    let declaration = &parsed.decls[0];
+    assert_eq!(&src[..declaration.signature.end as usize], signature);
+    assert_eq!(
+        &src[declaration.body.unwrap().start as usize..].trim(),
+        &body
+    );
 }

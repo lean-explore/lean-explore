@@ -161,7 +161,10 @@ fn apply_name_dict(d: &Dict, parts: &[String]) -> Vec<String> {
 /// `fixAbbreviationAux`.
 fn fix_abbreviation_aux(d: &Dict, l: &[String], s: Vec<String>) -> String {
     match l.split_first() {
-        None => s.concat(),
+        None => match s.split_first() {
+            None => String::new(),
+            Some((first, rest)) => first.clone() + &fix_abbreviation_aux(d, rest, Vec::new()),
+        },
         Some((pre, rest)) => {
             let mut s = s;
             s.push(pre.clone());
@@ -240,6 +243,23 @@ mod tests {
             ]
         );
         assert_eq!(split_case("CoeTC_foo"), ["CoeTC", "_", "foo"]);
+    }
+
+    #[test]
+    fn abbreviations_are_found_after_unmatched_prefixes() {
+        let dual = Dict::new(Attr::Dual);
+        assert_eq!(guess_name(&dual, "instWellFoundedLT"), "instWellFoundedGT");
+        assert_eq!(guess_name(&dual, "instWellFoundedGT"), "instWellFoundedLT");
+        let mut custom = Dict::new(Attr::Dual);
+        custom.add_hint("TwoWords", "Replacement");
+        assert_eq!(
+            guess_name(&custom, "beforeTwoWordsAfter"),
+            "beforeReplacementAfter"
+        );
+        assert_eq!(
+            guess_name(&custom, "beforeTwoWordsTwoWords"),
+            "beforeReplacementReplacement"
+        );
     }
 
     #[test]

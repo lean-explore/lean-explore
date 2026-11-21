@@ -221,6 +221,17 @@ def main() -> int:
     ap.add_argument("root")
     ap.add_argument("--report", default=None)
     ap.add_argument("--prefix", default="Mathlib")
+    ap.add_argument(
+        "--json", dest="json_path", help="Write the complete metrics as JSON"
+    )
+    ap.add_argument(
+        "--require-authored-exact",
+        action="store_true",
+        help=(
+            "Fail unless every authored declaration has exact spans "
+            "and authored precision is 100%%"
+        ),
+    )
     args = ap.parse_args()
 
     src = Sources(args.root)
@@ -345,6 +356,34 @@ def main() -> int:
                 f" = {prec[key + '_ok'] / t:.4%}"
             )
 
+    authored_exact = (
+        tot["total"] > 0
+        and tot["found"] == tot["total"]
+        and tot["exact"] == tot["total"]
+        and prec["authored_ok"] == prec["authored_total"]
+    )
+    if args.json_path:
+        metrics = {
+            "source_root": args.root,
+            "reference_file": args.ranges,
+            "parser_file": args.parser,
+            "reference_categories": dict(counts),
+            "categories": {category: dict(value) for category, value in stats.items()},
+            "authored": dict(tot),
+            "precision": dict(prec),
+            "reference_modules": len(ref_modules),
+            "parser_modules": len(modules),
+            "parser_declarations": len(parsed),
+            "authored_exact": authored_exact,
+            "scope": (
+                "Authored source declarations; generated declarations "
+                "are reported separately."
+            ),
+        }
+        with open(args.json_path, "w", encoding="utf-8") as handle:
+            json.dump(metrics, handle, indent=2)
+            handle.write("\n")
+
     if args.report:
         os.makedirs(args.report, exist_ok=True)
         with open(os.path.join(args.report, "misses.txt"), "w", encoding="utf-8") as f:
@@ -390,7 +429,7 @@ def main() -> int:
                     )
                     + "\n"
                 )
-    return 0
+    return int(args.require_authored_exact and not authored_exact)
 
 
 if __name__ == "__main__":

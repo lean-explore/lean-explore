@@ -1,0 +1,626 @@
+{
+  "schema_version": 1,
+  "oracle_audit_version": 2,
+  "metric": "Authored top-level declaration signature boundaries from Lean command syntax",
+  "global_precision_certified": false,
+  "oracle": {
+    "lean_toolchain": "leanprover/lean4:v4.32.0-rc1",
+    "mathlib_commit": "1b0782d8191b03e0001caac10e1601d17f2cd580",
+    "binary_sha256": "13dd0607f53677955a3a193faba3c58c17490448969cbfce286feb9b55e2a85b",
+    "source_sha256": "2323d54c23b8800dd2909e6109422e722eb3b053cab98c28927a8f6aacc64d58",
+    "comparison_script_sha256": "8c7ab13c71c31d9e19418c7e8b2156b742a502bbcf3936f47177b7bf22aa0123",
+    "quotation_precheck": false,
+    "variable_types_elaborated": false,
+    "declarations_or_proofs_elaborated": false
+  },
+  "corpora": {
+    "flt-anthropic": {
+      "commit": "6e837e75355538c7f80bab5b956861e86c4eacc2",
+      "lean_toolchain": "leanprover/lean4:v4.33.1",
+      "mathlib_pin": "db584cd6d46c92f209a44c0f1c829460d327499d",
+      "inventory_sha256": "6278c8ee2deadbec7096cc19a6f4a092fff04a721c11a118d79bfe4862d62800",
+      "repository": "https://github.com/anthropics/fermats-last-theorem",
+      "expected_files": 60478,
+      "source_bytes": 1170622459,
+      "parser_binary_sha256": "6630a2d201036c2a7cb8111caf14eeddc3a60b7807cba8f382d803ccbe8c76c2",
+      "parser_declarations_sha256": "47086512195b15f16902e9a0ccdc4b892f19a297d30d48904b0706b2166d79d7",
+      "reference_sha256": "16cd343f780c2296d661b939d5884c762971337b843c4081d63b93f405f33f2b",
+      "counts": {
+        "files": 60478,
+        "commands": 1659842,
+        "files_with_lean_errors": 42495,
+        "lean_errors": 181876,
+        "files_without_current_audit": 0,
+        "files_without_namespace_audit": 0,
+        "synthesized_namespaces": 92028,
+        "files_without_context_audit": 0,
+        "context_errors": 4565,
+        "grammar_context_errors": 3576,
+        "reference_declarations": 731467,
+        "untainted_signatures": 689860,
+        "found": 689860,
+        "exact_signature": 689860,
+        "parser_top_level_authored": 731527,
+        "parser_matched_usable_reference": 689860,
+        "tainted_signatures": 41607,
+        "tainted_boundary_disagreements": 24601,
+        "parser_matched_tainted_reference": 41607,
+        "tainted_exact_boundary": 17006,
+        "parser_unsupported_kind": 60,
+        "unexpected_parser_files": 0,
+        "inventory_files": 60478,
+        "missing_reference_files": 0,
+        "unexpected_reference_files": 0
+      },
+      "reference_kinds": {
+        "instance": {
+          "total": 15618,
+          "found": 14798,
+          "exact_signature": 14798,
+          "tainted": 820
+        },
+        "group": {
+          "total": 25218,
+          "found": 22411,
+          "exact_signature": 22411,
+          "tainted": 2807
+        },
+        "definition": {
+          "total": 85942,
+          "found": 81220,
+          "exact_signature": 81220,
+          "tainted": 4722
+        },
+        "structure": {
+          "total": 1599,
+          "found": 1564,
+          "exact_signature": 1564,
+          "tainted": 35
+        },
+        "theorem": {
+          "total": 586459,
+          "found": 553971,
+          "exact_signature": 553971,
+          "tainted": 32488
+        },
+        "abbrev": {
+          "total": 15329,
+          "found": 14625,
+          "exact_signature": 14625,
+          "tainted": 704
+        },
+        "example": {
+          "total": 1234,
+          "found": 1203,
+          "exact_signature": 1203,
+          "tainted": 31
+        },
+        "inductive": {
+          "total": 66,
+          "found": 66,
+          "exact_signature": 66
+        },
+        "command_Irreducible_def____": {
+          "total": 2,
+          "found": 2,
+          "exact_signature": 2
+        }
+      },
+      "unsupported_parser_kinds": {
+        "alias": 59,
+        "syntax": 1
+      },
+      "reference_prefix_removed": ""
+    },
+    "mathlib": {
+      "commit": "1b0782d8191b03e0001caac10e1601d17f2cd580",
+      "lean_toolchain": "leanprover/lean4:v4.32.0-rc1",
+      "inventory_sha256": "8e77c7b7efea45ab5d5c742405ed1e83fd2f1deb749b25b1a91d07ec2b06461f",
+      "repository": "https://github.com/leanprover-community/mathlib4",
+      "expected_files": 8206,
+      "source_bytes": 95119302,
+      "parser_binary_sha256": "6630a2d201036c2a7cb8111caf14eeddc3a60b7807cba8f382d803ccbe8c76c2",
+      "parser_declarations_sha256": "5a4640777c3e008b6ca2db6cbdaf4a19a532e443ebde22f7722247306c22dcde",
+      "reference_sha256": "c1a9cdcb452d3c07d3332c34dbc07450ca4e1b4145043e16085c59fefc2d8e5e",
+      "counts": {
+        "files": 8206,
+        "commands": 401900,
+        "files_with_lean_errors": 59,
+        "lean_errors": 215,
+        "files_without_current_audit": 0,
+        "files_without_namespace_audit": 0,
+        "synthesized_namespaces": 1238,
+        "files_without_context_audit": 0,
+        "context_errors": 607,
+        "grammar_context_errors": 603,
+        "reference_declarations": 251667,
+        "untainted_signatures": 247055,
+        "found": 247055,
+        "exact_signature": 247055,
+        "parser_top_level_authored": 257944,
+        "parser_matched_usable_reference": 247055,
+        "parser_unsupported_kind": 6277,
+        "tainted_signatures": 4612,
+        "tainted_exact_boundary": 4494,
+        "parser_matched_tainted_reference": 4612,
+        "tainted_boundary_disagreements": 118,
+        "unexpected_parser_files": 0,
+        "inventory_files": 8206,
+        "missing_reference_files": 0,
+        "unexpected_reference_files": 0
+      },
+      "reference_kinds": {
+        "structure": {
+          "total": 3567,
+          "found": 3460,
+          "exact_signature": 3460,
+          "tainted": 107
+        },
+        "theorem": {
+          "total": 126808,
+          "found": 124946,
+          "exact_signature": 124946,
+          "tainted": 1862
+        },
+        "instance": {
+          "total": 26824,
+          "found": 26431,
+          "exact_signature": 26431,
+          "tainted": 393
+        },
+        "definition": {
+          "total": 32405,
+          "found": 31214,
+          "exact_signature": 31214,
+          "tainted": 1191
+        },
+        "group": {
+          "total": 57572,
+          "found": 56637,
+          "exact_signature": 56637,
+          "tainted": 935
+        },
+        "abbrev": {
+          "total": 3455,
+          "found": 3375,
+          "exact_signature": 3375,
+          "tainted": 80
+        },
+        "example": {
+          "total": 530,
+          "found": 515,
+          "exact_signature": 515,
+          "tainted": 15
+        },
+        "inductive": {
+          "total": 335,
+          "found": 312,
+          "exact_signature": 312,
+          "tainted": 23
+        },
+        "command_Irreducible_def____": {
+          "total": 122,
+          "found": 118,
+          "exact_signature": 118,
+          "tainted": 4
+        },
+        "proof_wanted": {
+          "total": 38,
+          "found": 38,
+          "exact_signature": 38
+        },
+        "classInductive": {
+          "total": 6,
+          "found": 6,
+          "exact_signature": 6
+        },
+        "opaque": {
+          "total": 4,
+          "tainted": 2,
+          "found": 2,
+          "exact_signature": 2
+        },
+        "coinductive": {
+          "total": 1,
+          "found": 1,
+          "exact_signature": 1
+        }
+      },
+      "unsupported_parser_kinds": {
+        "alias": 5711,
+        "syntax": 232,
+        "register_option": 110,
+        "elab": 51,
+        "initialize": 51,
+        "simproc": 30,
+        "config_elab": 14,
+        "macro": 37,
+        "unif_hint": 14,
+        "class_abbrev": 3,
+        "notation": 22,
+        "syntax_category": 2
+      },
+      "reference_prefix_removed": ""
+    },
+    "riemann": {
+      "commit": "7cbf7a0c32fca1badf05931879a37c3f8a2b03b4",
+      "lean_toolchain": "leanprover/lean4:v4.33.1",
+      "mathlib_pin": "0df444a360eaa60ab8c11dca51a86af692955474",
+      "inventory_sha256": "b7e0fc77ee40c60a5fc821f7a3e47a10bf05b8a73fd43fa8af71574ec236d934",
+      "repository": "https://github.com/CocoSgt/riemann-hypothesis-lean",
+      "expected_files": 175187,
+      "source_bytes": 1030531854,
+      "parser_binary_sha256": "6630a2d201036c2a7cb8111caf14eeddc3a60b7807cba8f382d803ccbe8c76c2",
+      "parser_declarations_sha256": "dcdb8337a4b899036fffe7d159e61bfc47458054bfd941445d0a860c1f3af42a",
+      "reference_sha256": "a48692f7d817a32a058f0dcda2ecc6eb1f81846d55002676502048535ce806ee",
+      "counts": {
+        "files": 175187,
+        "commands": 2271392,
+        "files_with_lean_errors": 156,
+        "lean_errors": 551,
+        "files_without_current_audit": 0,
+        "files_without_namespace_audit": 0,
+        "synthesized_namespaces": 1189737,
+        "files_without_context_audit": 0,
+        "context_errors": 51493,
+        "grammar_context_errors": 2353,
+        "reference_declarations": 1066087,
+        "untainted_signatures": 1055274,
+        "found": 1055274,
+        "exact_signature": 1055274,
+        "parser_top_level_authored": 1066193,
+        "parser_matched_usable_reference": 1055274,
+        "tainted_signatures": 10813,
+        "tainted_exact_boundary": 10470,
+        "parser_matched_tainted_reference": 10813,
+        "parser_unsupported_kind": 106,
+        "tainted_boundary_disagreements": 343,
+        "unexpected_parser_files": 0,
+        "inventory_files": 175187,
+        "missing_reference_files": 0,
+        "unexpected_reference_files": 0
+      },
+      "reference_kinds": {
+        "theorem": {
+          "total": 784092,
+          "found": 775196,
+          "exact_signature": 775196,
+          "tainted": 8896
+        },
+        "definition": {
+          "total": 212819,
+          "found": 211187,
+          "exact_signature": 211187,
+          "tainted": 1632
+        },
+        "group": {
+          "total": 34663,
+          "found": 34640,
+          "exact_signature": 34640,
+          "tainted": 23
+        },
+        "structure": {
+          "total": 8329,
+          "found": 8271,
+          "exact_signature": 8271,
+          "tainted": 58
+        },
+        "abbrev": {
+          "total": 13202,
+          "found": 13082,
+          "exact_signature": 13082,
+          "tainted": 120
+        },
+        "instance": {
+          "total": 8199,
+          "found": 8137,
+          "exact_signature": 8137,
+          "tainted": 62
+        },
+        "inductive": {
+          "total": 121,
+          "found": 121,
+          "exact_signature": 121
+        },
+        "example": {
+          "total": 4662,
+          "found": 4640,
+          "exact_signature": 4640,
+          "tainted": 22
+        }
+      },
+      "unsupported_parser_kinds": {
+        "alias": 106
+      },
+      "reference_prefix_removed": "src/"
+    },
+    "navier-stokes-euler": {
+      "commit": "f9e8bc5b38b6e212696e8a30e3e91517af887bbd",
+      "lean_toolchain": "leanprover/lean4:v4.34.0-rc2",
+      "mathlib_pin": "85e3a25e006c35636f0e53b0e9296caca2685bc0",
+      "inventory_sha256": "c1fb376c2f1639e0e6fdae982b658c508b5ff3c1d420854d6ddc313edf42a306",
+      "repository": "https://github.com/openai/NavierStokesAndEuler",
+      "expected_files": 2659,
+      "source_bytes": 33721830,
+      "parser_binary_sha256": "6630a2d201036c2a7cb8111caf14eeddc3a60b7807cba8f382d803ccbe8c76c2",
+      "parser_declarations_sha256": "4ce11c0156fc610b97846bd66643e36e5897be67dc93e632e61f9e41912292ab",
+      "reference_sha256": "69b4e61b6faf8f5b29cb7ca9ba2cb4b26855856aa9c851a9f3bfc7af557f0a82",
+      "counts": {
+        "files": 2659,
+        "commands": 80310,
+        "files_with_lean_errors": 0,
+        "lean_errors": 0,
+        "files_without_current_audit": 0,
+        "files_without_namespace_audit": 0,
+        "synthesized_namespaces": 14209,
+        "files_without_context_audit": 0,
+        "context_errors": 126,
+        "grammar_context_errors": 11,
+        "reference_declarations": 52525,
+        "untainted_signatures": 51935,
+        "found": 51935,
+        "exact_signature": 51935,
+        "parser_top_level_authored": 52525,
+        "parser_matched_usable_reference": 51935,
+        "tainted_signatures": 590,
+        "tainted_exact_boundary": 590,
+        "parser_matched_tainted_reference": 590,
+        "unexpected_parser_files": 0,
+        "inventory_files": 2659,
+        "missing_reference_files": 0,
+        "unexpected_reference_files": 0
+      },
+      "reference_kinds": {
+        "definition": {
+          "total": 10827,
+          "found": 10722,
+          "exact_signature": 10722,
+          "tainted": 105
+        },
+        "structure": {
+          "total": 667,
+          "found": 626,
+          "exact_signature": 626,
+          "tainted": 41
+        },
+        "theorem": {
+          "total": 38512,
+          "found": 38080,
+          "exact_signature": 38080,
+          "tainted": 432
+        },
+        "abbrev": {
+          "total": 899,
+          "found": 887,
+          "exact_signature": 887,
+          "tainted": 12
+        },
+        "instance": {
+          "total": 1578,
+          "found": 1578,
+          "exact_signature": 1578
+        },
+        "group": {
+          "total": 28,
+          "found": 28,
+          "exact_signature": 28
+        },
+        "inductive": {
+          "total": 14,
+          "found": 14,
+          "exact_signature": 14
+        }
+      },
+      "unsupported_parser_kinds": {},
+      "reference_prefix_removed": ""
+    }
+  },
+  "limits": [
+    "Signature agreement is conditional on usable Lean references. It does not certify resolved names, semantic types, generated declarations, nested fields, or proofs.",
+    "Synthesized project namespaces and failed or unsupported grammar-changing commands remain explicit. Missing imported project grammar is not reconstructed by elaborating proofs.",
+    "The non-Mathlib corpora target newer Lean and Mathlib versions than the compiled oracle environment. Parse recovery and context failures are reported as unverified reference cases, not Rust parser errors.",
+    "Every reference file must match the independent source inventory. Unsupported parser declaration kinds and unmatched candidates are reported separately."
+  ],
+  "reference_context_overrides": {
+    "navier": {
+      "files": 4,
+      "file_list_sha256": "40e5010e6fb288ece3c6dc083e1749ae240fd4f288dda160ab916c5acda12b6c",
+      "source_manifest_sha256": "101b67d0799bae31a9d206f87bf62defe43244086ea47e9c4ed550be1ef1efcc",
+      "compiled_imports": [
+        "Mathlib.Algebra.BigOperators.Intervals",
+        "Mathlib.Algebra.BigOperators.NatAntidiagonal",
+        "Mathlib.Algebra.BigOperators.Ring.Finset",
+        "Mathlib.Algebra.Module.LinearMap.Basic",
+        "Mathlib.Algebra.Order.BigOperators.Group.Finset",
+        "Mathlib.Algebra.Order.Chebyshev",
+        "Mathlib.Algebra.QuadraticDiscriminant",
+        "Mathlib.Analysis.Calculus.BumpFunction.Convolution",
+        "Mathlib.Analysis.Calculus.BumpFunction.InnerProduct",
+        "Mathlib.Analysis.Calculus.ContDiff.Bounds",
+        "Mathlib.Analysis.Calculus.ContDiff.Comp",
+        "Mathlib.Analysis.Calculus.ContDiff.Convolution",
+        "Mathlib.Analysis.Calculus.ContDiff.Deriv",
+        "Mathlib.Analysis.Calculus.ContDiff.FaaDiBruno",
+        "Mathlib.Analysis.Calculus.ContDiff.Operations",
+        "Mathlib.Analysis.Calculus.ContDiff.RestrictScalars",
+        "Mathlib.Analysis.Calculus.Deriv.Add",
+        "Mathlib.Analysis.Calculus.Deriv.Comp",
+        "Mathlib.Analysis.Calculus.Deriv.Inv",
+        "Mathlib.Analysis.Calculus.Deriv.MeanValue",
+        "Mathlib.Analysis.Calculus.Deriv.Mul",
+        "Mathlib.Analysis.Calculus.Deriv.Pow",
+        "Mathlib.Analysis.Calculus.Deriv.Prod",
+        "Mathlib.Analysis.Calculus.Deriv.Slope",
+        "Mathlib.Analysis.Calculus.FDeriv.Add",
+        "Mathlib.Analysis.Calculus.FDeriv.Bilinear",
+        "Mathlib.Analysis.Calculus.FDeriv.Mul",
+        "Mathlib.Analysis.Calculus.FDeriv.OfCompLeft",
+        "Mathlib.Analysis.Calculus.FDeriv.Prod",
+        "Mathlib.Analysis.Calculus.FDeriv.Symmetric",
+        "Mathlib.Analysis.Calculus.FDeriv.WithLp",
+        "Mathlib.Analysis.Calculus.Gradient.Basic",
+        "Mathlib.Analysis.Calculus.IteratedDeriv.Lemmas",
+        "Mathlib.Analysis.Calculus.LineDeriv.IntegrationByParts",
+        "Mathlib.Analysis.Calculus.MeanValue",
+        "Mathlib.Analysis.Calculus.ParametricIntegral",
+        "Mathlib.Analysis.Calculus.SmoothSeries",
+        "Mathlib.Analysis.Calculus.UniformLimitsDeriv",
+        "Mathlib.Analysis.Complex.Liouville",
+        "Mathlib.Analysis.Distribution.Sobolev",
+        "Mathlib.Analysis.Fourier.Convolution",
+        "Mathlib.Analysis.FunctionalSpaces.SobolevInequality",
+        "Mathlib.Analysis.InnerProductSpace.Adjoint",
+        "Mathlib.Analysis.InnerProductSpace.Calculus",
+        "Mathlib.Analysis.InnerProductSpace.Continuous",
+        "Mathlib.Analysis.InnerProductSpace.LaxMilgram",
+        "Mathlib.Analysis.InnerProductSpace.PiL2",
+        "Mathlib.Analysis.InnerProductSpace.Positive",
+        "Mathlib.Analysis.InnerProductSpace.Projection.Basic",
+        "Mathlib.Analysis.Normed.Group.Bounded",
+        "Mathlib.Analysis.Normed.Operator.Bilinear",
+        "Mathlib.Analysis.Normed.Operator.Extend",
+        "Mathlib.Analysis.ODE.ExistUnique",
+        "Mathlib.Analysis.ODE.Gronwall",
+        "Mathlib.Analysis.ODE.PicardLindelof",
+        "Mathlib.Analysis.SpecialFunctions.Exp",
+        "Mathlib.Analysis.SpecialFunctions.Gaussian.FourierTransform",
+        "Mathlib.Analysis.SpecialFunctions.Integrals.Basic",
+        "Mathlib.Analysis.SpecialFunctions.JapaneseBracket",
+        "Mathlib.Analysis.SpecialFunctions.Log.Basic",
+        "Mathlib.Analysis.SpecialFunctions.Pow.Asymptotics",
+        "Mathlib.Analysis.SpecialFunctions.Pow.Integral",
+        "Mathlib.Analysis.SpecialFunctions.Pow.Real",
+        "Mathlib.Analysis.SpecialFunctions.SmoothTransition",
+        "Mathlib.Analysis.SpecialFunctions.Sqrt",
+        "Mathlib.Analysis.SpecialFunctions.Trigonometric.ArctanDeriv",
+        "Mathlib.Analysis.SpecialFunctions.Trigonometric.DerivHyp",
+        "Mathlib.Analysis.SpecificLimits.Normed",
+        "Mathlib.Data.Fin.VecNotation",
+        "Mathlib.Data.Matrix.Mul",
+        "Mathlib.Data.Nat.Choose.Bounds",
+        "Mathlib.Data.Nat.Choose.Cast",
+        "Mathlib.Data.Nat.Choose.Sum",
+        "Mathlib.Data.Real.Basic",
+        "Mathlib.Geometry.Euclidean.Angle.Unoriented.CrossProduct",
+        "Mathlib.LinearAlgebra.FiniteDimensional.Lemmas",
+        "Mathlib.LinearAlgebra.Matrix.Adjugate",
+        "Mathlib.LinearAlgebra.Matrix.Determinant.Basic",
+        "Mathlib.LinearAlgebra.Matrix.Trace",
+        "Mathlib.LinearAlgebra.Trace",
+        "Mathlib.MeasureTheory.Constructions.Pi",
+        "Mathlib.MeasureTheory.Function.AEEqOfIntegral",
+        "Mathlib.MeasureTheory.Function.AbsolutelyContinuous",
+        "Mathlib.MeasureTheory.Function.ContinuousMapDense",
+        "Mathlib.MeasureTheory.Function.ConvergenceInMeasure",
+        "Mathlib.MeasureTheory.Function.Holder",
+        "Mathlib.MeasureTheory.Function.Jacobian",
+        "Mathlib.MeasureTheory.Function.L1Space.Integrable",
+        "Mathlib.MeasureTheory.Function.L2Space",
+        "Mathlib.MeasureTheory.Function.LpSeminorm.Indicator",
+        "Mathlib.MeasureTheory.Function.LpSeminorm.LpNorm",
+        "Mathlib.MeasureTheory.Function.LpSpace.ContinuousCompMeasurePreserving",
+        "Mathlib.MeasureTheory.Function.LpSpace.Indicator",
+        "Mathlib.MeasureTheory.Function.StronglyMeasurable.Lemmas",
+        "Mathlib.MeasureTheory.Group.Prod",
+        "Mathlib.MeasureTheory.Integral.Bochner.Basic",
+        "Mathlib.MeasureTheory.Integral.Bochner.Set",
+        "Mathlib.MeasureTheory.Integral.CurveIntegral.Poincare",
+        "Mathlib.MeasureTheory.Integral.DominatedConvergence",
+        "Mathlib.MeasureTheory.Integral.IntegralEqImproper",
+        "Mathlib.MeasureTheory.Integral.IntervalIntegral.AbsolutelyContinuousFun",
+        "Mathlib.MeasureTheory.Integral.IntervalIntegral.Basic",
+        "Mathlib.MeasureTheory.Integral.IntervalIntegral.FundThmCalculus",
+        "Mathlib.MeasureTheory.Integral.IntervalIntegral.LebesgueDifferentiationThm",
+        "Mathlib.MeasureTheory.Integral.IntervalIntegral.Periodic",
+        "Mathlib.MeasureTheory.Integral.MeanInequalities",
+        "Mathlib.MeasureTheory.Integral.Prod",
+        "Mathlib.MeasureTheory.Measure.Haar.InnerProductSpace",
+        "Mathlib.MeasureTheory.SpecificCodomains.WithLp",
+        "Mathlib.Probability.Distributions.Gaussian.Real",
+        "Mathlib.Tactic",
+        "Mathlib.Tactic.Abel",
+        "Mathlib.Tactic.Choose",
+        "Mathlib.Tactic.FieldSimp",
+        "Mathlib.Tactic.Linarith",
+        "Mathlib.Tactic.Module",
+        "Mathlib.Tactic.NormNum",
+        "Mathlib.Tactic.Positivity",
+        "Mathlib.Tactic.Ring",
+        "Mathlib.Topology.Algebra.Module.ClosedSubmodule",
+        "Mathlib.Topology.ContinuousMap.Algebra",
+        "Mathlib.Topology.ContinuousMap.Bounded.Normed",
+        "Mathlib.Topology.ContinuousMap.Compact",
+        "Mathlib.Topology.MetricSpace.Cauchy",
+        "Mathlib.Topology.MetricSpace.Thickening",
+        "Mathlib.Topology.Order.ProjIcc",
+        "Mathlib.Topology.Piecewise"
+      ]
+    },
+    "rh-matrix": {
+      "files": 506,
+      "file_list_sha256": "2c519175ddaa572105ee81b5c44976898139a71eefd9d8c741b55a447d2f14cc",
+      "source_manifest_sha256": "6f402c653ad1cfb4c27726850021d6bfbe80475d1e25307906465e22bedc8511",
+      "notation_source": {
+        "path": "Development/AbelianVarietyTheory/Definitions/TwistedInnerProducts/CovolOneIntegralAdd.lean",
+        "commit": "7cbf7a0c32fca1badf05931879a37c3f8a2b03b4",
+        "sha256": "f4436fce7f5e0508fa69408e06cf0ac9450208432d5d18dfba23126e7c8fb3d5",
+        "line": "scoped infixl:70 \" ⬝ \" => HMul.hMul"
+      },
+      "dependency_witness_sha256": "14ccb4efd35b00263d4366f21d23330e82356178e549433ee0c6c2e779719ef9",
+      "replayed_notation_source_sha256": "64d307bdccb24b105cc6c700fdea11ed17c12063d7aed57f62a2d2f5029a1059",
+      "replayed_notation_olean_sha256": "24d4f0b911c4313cc0bd201e470a91c88da2add2ff73df3b010f52351380fed5"
+    },
+    "rh-adele": {
+      "files": 182,
+      "file_list_sha256": "4213c167ede8766cb5e6088917ef5055cc608614a97507b4dbe01a36827a6fcb",
+      "source_manifest_sha256": "2b1bea50c8a1d868567fe2ee35e585d53939c913972611535be0bf2776fea0ab",
+      "notation_source": {
+        "url": "https://raw.githubusercontent.com/leanprover-community/mathlib4/0df444a360eaa60ab8c11dca51a86af692955474/Mathlib/RingTheory/DedekindDomain/FiniteAdeleRing.lean",
+        "sha256": "0d5f22b3498e0cfd23c75a401b2e534b865c87dd8fc00ba0371482cda35d864b",
+        "line": "scoped notation:max \"𝔸ᶠ[\" R \", \" K \"]\" => FiniteAdeleRing R K"
+      },
+      "replayed_notation_source_sha256": "255a0356b49344e82765e4a5191feb1eec1969e49afd0b5c2a7f4bee0695b562",
+      "replayed_notation_olean_sha256": "4c055c59e31c004d559b128cbdcffc1ffb694858e32e0f57e510163c6bab17e2"
+    },
+    "mathlib": {
+      "files": 2,
+      "sources": [
+        {
+          "file": "Mathlib/CategoryTheory/LiftingProperties/Over.lean",
+          "source_sha256": "9a27e64c17edddc6cd291da68edef0e8d61d99e0a4fc9f81117f8829382a9a7d",
+          "imports": [
+            "Mathlib.CategoryTheory.LiftingProperties.Basic",
+            "Mathlib.CategoryTheory.Comma.Over.Basic"
+          ],
+          "binary_sha256": "13dd0607f53677955a3a193faba3c58c17490448969cbfce286feb9b55e2a85b"
+        },
+        {
+          "file": "Mathlib/Algebra/Category/ModuleCat/Sheaf/PushforwardContinuous.lean",
+          "source_sha256": "6ff2179ef14a52e3efe58ad742b68bc54bb7f8ed5d4fe207b883d7acba253d80",
+          "imports": [
+            "Mathlib.Algebra.Category.ModuleCat.Presheaf.Pushforward",
+            "Mathlib.Algebra.Category.ModuleCat.Sheaf",
+            "Mathlib.CategoryTheory.Sites.Over",
+            "Mathlib.CategoryTheory.Comma.Over.Pullback",
+            "Mathlib.CategoryTheory.Limits.Shapes.BinaryProducts"
+          ],
+          "binary_sha256": "13dd0607f53677955a3a193faba3c58c17490448969cbfce286feb9b55e2a85b"
+        }
+      ]
+    }
+  },
+  "reference_generation": {
+    "default_imports": [
+      "Mathlib"
+    ],
+    "workers": 8,
+    "rss_limit_mib": 8192,
+    "batch_sizes": {
+      "flt-anthropic": 10000,
+      "mathlib": 10000,
+      "riemann": 20000,
+      "navier-stokes-euler": 10000
+    },
+    "file_order": "Independent Git source inventory order"
+  }
+}

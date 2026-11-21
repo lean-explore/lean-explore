@@ -246,6 +246,7 @@ dependencies = [
  "memmap2",
  "mimalloc",
  "rayon",
+ "same-file",
  "walkdir",
 ]
 

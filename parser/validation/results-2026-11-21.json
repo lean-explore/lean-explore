@@ -1,0 +1,889 @@
+{
+  "schema_version": 1,
+  "date": "2026-11-21",
+  "scope": "Performance measurements; accuracy is reported separately.",
+  "hardware": {
+    "cpu": "Intel Core Ultra 9 275HX",
+    "logical_cpus": 24,
+    "worker_threads": 24,
+    "memory_total_kib": 24606380,
+    "system": "Linux-6.18.33.1-microsoft-standard-WSL2-x86_64-with-glibc2.43",
+    "filesystem": "NTFS accessed through WSL /mnt/c for all target and context sources"
+  },
+  "build": {
+    "base_commit": "7f9c98c2c53474aaaece8892fa781a789596f01d",
+    "uncommitted_changes_at_measurement": true,
+    "rustc": "rustc 1.100.0 (0ef1bc386 2026-11-09)\nbinary: rustc\ncommit-hash: 0ef1bc386059596dada8fb65b50425aab2ea637a\ncommit-date: 2026-11-09\nhost: x86_64-unknown-linux-gnu\nrelease: 1.100.0\nLLVM version: 23.1.5",
+    "cargo": "cargo 1.100.0 (3acc79c0c 2026-11-05)",
+    "profile": {
+      "optimization": "release",
+      "lto": "fat",
+      "codegen_units": 1,
+      "panic": "abort"
+    },
+    "source_manifest_sha256": "ad1d2695efd928f651dd4b983b907d24a1d63f293a48e6721209abe6822f726e",
+    "source_manifest": [
+      {
+        "path": "parser/crates/lean-source/benches/parse.rs",
+        "sha256": "7830f2473a5b45be63cfc397aff363ed0ab9c3e5df5d25f1067e2aeda064caa2"
+      },
+      {
+        "path": "parser/crates/lean-source/examples/phases.rs",
+        "sha256": "38b5add86a49cc2f36261e52617f38cce674df208f15451fa8fb7cdeefd4c159"
+      },
+      {
+        "path": "parser/crates/lean-source/src/chars.rs",
+        "sha256": "93e222dc3c7899411f8084aee917d3e2e089683d64e3f44313932351d8437884"
+      },
+      {
+        "path": "parser/crates/lean-source/src/json.rs",
+        "sha256": "9ae85335bb6713e0e354b850f4f6512d6c1093cac854a175b0f5d073cf6d18ee"
+      },
+      {
+        "path": "parser/crates/lean-source/src/keywords.rs",
+        "sha256": "cd28dc5511e7999e88fc1bf2eb5f8e9c33a09c6daa15fecf5fc89f51cac1248f"
+      },
+      {
+        "path": "parser/crates/lean-source/src/lexer.rs",
+        "sha256": "c8d4b1c5d38ffa31c322ab5569bdfb9a314306cdfd6bdd3e74867067a956eeb1"
+      },
+      {
+        "path": "parser/crates/lean-source/src/lib.rs",
+        "sha256": "cd1f9be5010d64731695aeb5055f49edca3244046cda6009ceb46561b9e03417"
+      },
+      {
+        "path": "parser/crates/lean-source/src/pos.rs",
+        "sha256": "10b2280dc6ac0ac03c60e320fd619fcdb362bb8719e9260804c8a56565b218eb"
+      },
+      {
+        "path": "parser/crates/lean-source/src/scan.rs",
+        "sha256": "8725f9f00c2d4fbc16c1448cb65a9c42c43dde7af5dfccb6aa4ec60cfb3a0263"
+      },
+      {
+        "path": "parser/crates/lean-source/src/translate.rs",
+        "sha256": "17cb60df805f7a9ef7e145657a4c7af37e2e81d8492e634e7ad444600c881b69"
+      },
+      {
+        "path": "parser/crates/lean-source/src/translate_tables.rs",
+        "sha256": "9a0657106344cd1173cb1519625794c62b5fa35a3caa17a167fd05f1716e1c72"
+      },
+      {
+        "path": "parser/crates/lean-source/tests/mathlib_regressions.rs",
+        "sha256": "c8685d72bbeccacb76615dbf76408d15c280e27997b63be0d4879c01731204a3"
+      },
+      {
+        "path": "parser/crates/lean-source/tests/scan.rs",
+        "sha256": "f9af6f2d289ed33655b862e66812c49a44c02e882a9fea0aded66fb015397ca0"
+      },
+      {
+        "path": "parser/crates/lean-source/tests/simps.rs",
+        "sha256": "4906d3397140aa4bcc85fe00c3ed13ac10f699d1b500007ea59427268ad938ae"
+      },
+      {
+        "path": "parser/crates/lean-source-cli/examples/project_bench.rs",
+        "sha256": "333b3ba989227b442f1013536568b79989235ba6060cfa994d79740620cf2f1d"
+      },
+      {
+        "path": "parser/crates/lean-source-cli/src/main.rs",
+        "sha256": "df48c877575c6ee36fa12f6c6a95ff4beb15982dc89306ed9488685e2087f234"
+      },
+      {
+        "path": "parser/crates/lean-source-cli/tests/cli.rs",
+        "sha256": "1b271438a9682243f8e650bbd773e94eb6c00f703ce3fa46c2322db2ada5f1a9"
+      },
+      {
+        "path": "parser/crates/lean-source-py/src/lib.rs",
+        "sha256": "e07ffb000e7f77a398eb9ac9f9c15e3f36dc463e4bf43ac13cc674c722ee02e9"
+      },
+      {
+        "path": "parser/Cargo.toml",
+        "sha256": "a1bf1a37d5b23bd7e15f67d7faa8e7fbd2e88d15d1c3ac8dc8227a3e999da47b"
+      },
+      {
+        "path": "parser/crates/lean-source/Cargo.toml",
+        "sha256": "847939b9d37356a984d76e41bf46edc824fe4578e6fe3d832befcf473cd17849"
+      },
+      {
+        "path": "parser/crates/lean-source-cli/Cargo.toml",
+        "sha256": "d18fdc466f1032764bcd4f19ba1374bbb93c68f12d6962c578ba345e365c60a6"
+      },
+      {
+        "path": "parser/crates/lean-source-py/Cargo.toml",
+        "sha256": "ee9bd51e3a660b0992df618d85e4db227b3b79cfdfdf0f38a0c02611c19fed78"
+      },
+      {
+        "path": "parser/Cargo.lock",
+        "sha256": "8fa9b83df527545b4bed8af48e1a0582d83622cf6a0a0767db36de933160cc14"
+      }
+    ],
+    "binaries": {
+      "lean-source": {
+        "sha256": "6630a2d201036c2a7cb8111caf14eeddc3a60b7807cba8f382d803ccbe8c76c2",
+        "bytes": 1045240
+      },
+      "project_bench": {
+        "sha256": "300b9d989fe98081b94911756709012e36016211dfe3f49d804274130552b81e",
+        "bytes": 1009096
+      },
+      "absolute-stress-before": {
+        "sha256": "75bb53a1325dcd64a274240613f288d75cde1363f27c709a457bf4317e5def3a",
+        "bytes": 619240
+      },
+      "absolute-stress-after": {
+        "sha256": "21f0da18cb2bb5764ec5b4affa301a611c8fb04504853b02ab5bc2bb61930b83",
+        "bytes": 644824
+      }
+    }
+  },
+  "methodology": {
+    "project_mode": true,
+    "source_counts_checked_against_pinned_git_inventory": true,
+    "disk_and_memory_declaration_counts_agree": true,
+    "disk": {
+      "warmups": 1,
+      "measured_runs": 5,
+      "summary": "median elapsed time; range is min/max; RSS is maximum across measured runs",
+      "includes": [
+        "process startup",
+        "file discovery",
+        "source reading",
+        "parsing",
+        "project context construction",
+        "required second passes",
+        "cleanup"
+      ],
+      "cache": "filesystem caches were not flushed; these are warm-cache filesystem measurements, not cold-device latency"
+    },
+    "in_memory": {
+      "warmups": 1,
+      "measured_runs": 7,
+      "summary": "median parsing elapsed time; range is min/max; RSS is whole-process peak",
+      "includes": [
+        "first parsing pass",
+        "context-source parsing",
+        "project context construction",
+        "required second passes"
+      ],
+      "excludes": [
+        "initial file discovery and reading",
+        "JSON serialization",
+        "final release of retained parsed structures"
+      ],
+      "release_time_recorded_separately": true
+    },
+    "exports": {
+      "runs": 1,
+      "declarations_flags": [
+        "--text"
+      ],
+      "commands_flags": [
+        "--commands"
+      ],
+      "includes": [
+        "file discovery",
+        "source reading",
+        "parsing",
+        "serialization",
+        "output writes"
+      ],
+      "file_sizes": "logical bytes, not allocated filesystem blocks"
+    },
+    "memory": "Peak RSS is measured by /usr/bin/time and includes resident sources and parsed structures, not just incremental parser scratch allocations.",
+    "quiet_window": "No builds or corpus validation ran during measurement. This rerun followed a WSL restart and used a fresh warm-up for each corpus.",
+    "environment_check": {
+      "changed_source_files": [],
+      "swap_in_pages_delta": 0,
+      "swap_out_pages_delta": 0,
+      "memory_before": {
+        "MemTotal:": 24606380,
+        "MemAvailable:": 23616524,
+        "SwapTotal:": 8388608,
+        "SwapFree:": 8388608
+      },
+      "memory_after": {
+        "MemTotal:": 24606380,
+        "MemAvailable:": 23809884,
+        "SwapTotal:": 8388608,
+        "SwapFree:": 8388608
+      }
+    }
+  },
+  "corpora": [
+    {
+      "name": "flt-anthropic",
+      "repository": "https://github.com/anthropics/fermats-last-theorem",
+      "commit": "6e837e75355538c7f80bab5b956861e86c4eacc2",
+      "target_scope": "**/*.lean",
+      "target_files": 60478,
+      "target_bytes": 1170622459,
+      "declarations": 746683,
+      "context_files": 0,
+      "context_bytes": 0,
+      "summary": {
+        "files": 60478,
+        "bytes": 1170622459,
+        "declarations": 746683,
+        "context_files": 0,
+        "context_bytes": 0,
+        "mode": "project",
+        "threads": 24,
+        "disk_median_s": 8.311286703,
+        "disk_min_s": 8.276804931000001,
+        "disk_max_s": 8.478910401999999,
+        "disk_peak_rss_kib": 2232576,
+        "memory_median_ms": 303.08,
+        "memory_min_ms": 292.508,
+        "memory_max_ms": 330.1,
+        "memory_peak_rss_kib": 2283432
+      },
+      "disk_runs": [
+        {
+          "wall_s": 8.478910401999999,
+          "peak_rss_kib": 2232576
+        },
+        {
+          "wall_s": 8.324544383000003,
+          "peak_rss_kib": 2206844
+        },
+        {
+          "wall_s": 8.284195098000001,
+          "peak_rss_kib": 2203128
+        },
+        {
+          "wall_s": 8.276804931000001,
+          "peak_rss_kib": 2173544
+        },
+        {
+          "wall_s": 8.311286703,
+          "peak_rss_kib": 2207840
+        }
+      ],
+      "memory_runs": [
+        {
+          "parse_ms": 292.508,
+          "release_ms": 33.891
+        },
+        {
+          "parse_ms": 316.638,
+          "release_ms": 32.914
+        },
+        {
+          "parse_ms": 330.1,
+          "release_ms": 32.001
+        },
+        {
+          "parse_ms": 299.657,
+          "release_ms": 31.987
+        },
+        {
+          "parse_ms": 310.908,
+          "release_ms": 31.177
+        },
+        {
+          "parse_ms": 303.08,
+          "release_ms": 32.108
+        },
+        {
+          "parse_ms": 295.165,
+          "release_ms": 31.701
+        }
+      ],
+      "exports": {
+        "declarations": {
+          "elapsed_s": 10.46,
+          "user_s": 7.8,
+          "system_s": 6.36,
+          "peak_rss_kib": 2341232,
+          "major_faults": 22,
+          "minor_faults": 7808,
+          "wall_s": 10.472195795000005,
+          "bytes": 814098195,
+          "sha256": "47086512195b15f16902e9a0ccdc4b892f19a297d30d48904b0706b2166d79d7"
+        },
+        "commands": {
+          "elapsed_s": 10.8,
+          "user_s": 7.35,
+          "system_s": 6.61,
+          "peak_rss_kib": 2351608,
+          "major_faults": 22,
+          "minor_faults": 9705,
+          "wall_s": 10.806706721000012,
+          "bytes": 909836349,
+          "sha256": "c9d260d48556a7ed03fb0c1ce722cca4049bbe468dc0aefa4739b636484c8a6a"
+        }
+      },
+      "context_note": "Standalone repository project context; no external dependency source context was added."
+    },
+    {
+      "name": "mathlib",
+      "repository": "https://github.com/leanprover-community/mathlib4",
+      "commit": "1b0782d8191b03e0001caac10e1601d17f2cd580",
+      "target_scope": "Mathlib/**/*.lean",
+      "target_files": 8206,
+      "target_bytes": 95119302,
+      "declarations": 297228,
+      "context_files": 786,
+      "context_bytes": 9627333,
+      "summary": {
+        "files": 8206,
+        "bytes": 95119302,
+        "declarations": 297228,
+        "context_files": 786,
+        "context_bytes": 9627333,
+        "mode": "project",
+        "threads": 24,
+        "disk_median_s": 3.479422678000006,
+        "disk_min_s": 3.396329872999999,
+        "disk_max_s": 3.653224653999999,
+        "disk_peak_rss_kib": 644360,
+        "memory_median_ms": 61.243,
+        "memory_min_ms": 58.152,
+        "memory_max_ms": 64.293,
+        "memory_peak_rss_kib": 622740
+      },
+      "disk_runs": [
+        {
+          "wall_s": 3.653224653999999,
+          "peak_rss_kib": 610540
+        },
+        {
+          "wall_s": 3.479422678000006,
+          "peak_rss_kib": 644360
+        },
+        {
+          "wall_s": 3.454150881000004,
+          "peak_rss_kib": 623144
+        },
+        {
+          "wall_s": 3.396329872999999,
+          "peak_rss_kib": 624216
+        },
+        {
+          "wall_s": 3.507939528999998,
+          "peak_rss_kib": 633844
+        }
+      ],
+      "memory_runs": [
+        {
+          "parse_ms": 61.995,
+          "release_ms": 7.911
+        },
+        {
+          "parse_ms": 60.649,
+          "release_ms": 7.809
+        },
+        {
+          "parse_ms": 58.152,
+          "release_ms": 8.824
+        },
+        {
+          "parse_ms": 61.243,
+          "release_ms": 8.287
+        },
+        {
+          "parse_ms": 62.875,
+          "release_ms": 7.802
+        },
+        {
+          "parse_ms": 64.293,
+          "release_ms": 8.253
+        },
+        {
+          "parse_ms": 58.848,
+          "release_ms": 7.748
+        }
+      ],
+      "exports": {
+        "declarations": {
+          "elapsed_s": 4.14,
+          "user_s": 1.39,
+          "system_s": 1.65,
+          "peak_rss_kib": 754360,
+          "major_faults": 23,
+          "minor_faults": 2073,
+          "wall_s": 4.1517661400000065,
+          "bytes": 188340833,
+          "sha256": "5a4640777c3e008b6ca2db6cbdaf4a19a532e443ebde22f7722247306c22dcde"
+        },
+        "commands": {
+          "elapsed_s": 3.74,
+          "user_s": 1.06,
+          "system_s": 1.59,
+          "peak_rss_kib": 641204,
+          "major_faults": 22,
+          "minor_faults": 3659,
+          "wall_s": 3.7514732829999957,
+          "bytes": 99195533,
+          "sha256": "a1d8c20557a4a0270c87107d8bdaa48975123d9a08b738926f0c518b8b745d36"
+        }
+      },
+      "context_components": [
+        {
+          "name": "Init",
+          "files": 600,
+          "bytes": 8511617,
+          "source_manifest_sha256": "47a5b80f6207d8c87b32fd949283df80cc60f1250b9e70851e843f6440a4ddc5"
+        },
+        {
+          "name": "Batteries",
+          "files": 186,
+          "bytes": 1115716,
+          "source_manifest_sha256": "b665f98a4312935be43b7045a7cb7a47c910ef8db83ebc82394837708004355d"
+        }
+      ],
+      "context_note": "Matching Init and Batteries source context; declarations from these files are not emitted. Context reading/parsing is included in the timings."
+    },
+    {
+      "name": "riemann",
+      "repository": "https://github.com/CocoSgt/riemann-hypothesis-lean",
+      "commit": "7cbf7a0c32fca1badf05931879a37c3f8a2b03b4",
+      "target_scope": "src/**/*.lean",
+      "target_files": 175187,
+      "target_bytes": 1030531854,
+      "declarations": 1146957,
+      "context_files": 0,
+      "context_bytes": 0,
+      "summary": {
+        "files": 175187,
+        "bytes": 1030531854,
+        "declarations": 1146957,
+        "context_files": 0,
+        "context_bytes": 0,
+        "mode": "project",
+        "threads": 24,
+        "disk_median_s": 33.922284046000016,
+        "disk_min_s": 33.148947115,
+        "disk_max_s": 35.507759448,
+        "disk_peak_rss_kib": 2008196,
+        "memory_median_ms": 316.719,
+        "memory_min_ms": 310.674,
+        "memory_max_ms": 322.985,
+        "memory_peak_rss_kib": 1987548
+      },
+      "disk_runs": [
+        {
+          "wall_s": 33.182131262999974,
+          "peak_rss_kib": 1997780
+        },
+        {
+          "wall_s": 33.148947115,
+          "peak_rss_kib": 1987320
+        },
+        {
+          "wall_s": 33.922284046000016,
+          "peak_rss_kib": 2008196
+        },
+        {
+          "wall_s": 34.961193614000024,
+          "peak_rss_kib": 1996548
+        },
+        {
+          "wall_s": 35.507759448,
+          "peak_rss_kib": 1969540
+        }
+      ],
+      "memory_runs": [
+        {
+          "parse_ms": 320.347,
+          "release_ms": 49.161
+        },
+        {
+          "parse_ms": 318.368,
+          "release_ms": 50.643
+        },
+        {
+          "parse_ms": 310.674,
+          "release_ms": 50.237
+        },
+        {
+          "parse_ms": 322.985,
+          "release_ms": 54.106
+        },
+        {
+          "parse_ms": 316.719,
+          "release_ms": 51.543
+        },
+        {
+          "parse_ms": 316.086,
+          "release_ms": 49.918
+        },
+        {
+          "parse_ms": 313.198,
+          "release_ms": 51.948
+        }
+      ],
+      "exports": {
+        "declarations": {
+          "elapsed_s": 37.07,
+          "user_s": 10.73,
+          "system_s": 20.99,
+          "peak_rss_kib": 2159404,
+          "major_faults": 22,
+          "minor_faults": 12490,
+          "wall_s": 37.078913709000005,
+          "bytes": 926934071,
+          "sha256": "dcdb8337a4b899036fffe7d159e61bfc47458054bfd941445d0a860c1f3af42a"
+        },
+        "commands": {
+          "elapsed_s": 36.03,
+          "user_s": 10.4,
+          "system_s": 20.61,
+          "peak_rss_kib": 2042940,
+          "major_faults": 22,
+          "minor_faults": 12793,
+          "wall_s": 36.03865732600002,
+          "bytes": 988285490,
+          "sha256": "6dac512139cb4c2c916a6406431f27eab0442ea0c20dc32113e9c93c70754518"
+        }
+      },
+      "context_note": "Standalone repository project context; no external dependency source context was added."
+    },
+    {
+      "name": "navier-stokes-euler",
+      "repository": "https://github.com/openai/NavierStokesAndEuler",
+      "commit": "f9e8bc5b38b6e212696e8a30e3e91517af887bbd",
+      "target_scope": "**/*.lean",
+      "target_files": 2659,
+      "target_bytes": 33721830,
+      "declarations": 58552,
+      "context_files": 0,
+      "context_bytes": 0,
+      "summary": {
+        "files": 2659,
+        "bytes": 33721830,
+        "declarations": 58552,
+        "context_files": 0,
+        "context_bytes": 0,
+        "mode": "project",
+        "threads": 24,
+        "disk_median_s": 0.3984673009999824,
+        "disk_min_s": 0.38376792000002524,
+        "disk_max_s": 0.4578880460000505,
+        "disk_peak_rss_kib": 330860,
+        "memory_median_ms": 14.639,
+        "memory_min_ms": 13.039,
+        "memory_max_ms": 15.854,
+        "memory_peak_rss_kib": 402692
+      },
+      "disk_runs": [
+        {
+          "wall_s": 0.4578880460000505,
+          "peak_rss_kib": 326896
+        },
+        {
+          "wall_s": 0.3984673009999824,
+          "peak_rss_kib": 330860
+        },
+        {
+          "wall_s": 0.40490363699996124,
+          "peak_rss_kib": 312608
+        },
+        {
+          "wall_s": 0.3916048469999964,
+          "peak_rss_kib": 316492
+        },
+        {
+          "wall_s": 0.38376792000002524,
+          "peak_rss_kib": 310344
+        }
+      ],
+      "memory_runs": [
+        {
+          "parse_ms": 14.639,
+          "release_ms": 0.992
+        },
+        {
+          "parse_ms": 14.381,
+          "release_ms": 1.112
+        },
+        {
+          "parse_ms": 15.298,
+          "release_ms": 1.053
+        },
+        {
+          "parse_ms": 14.494,
+          "release_ms": 0.973
+        },
+        {
+          "parse_ms": 15.854,
+          "release_ms": 1.102
+        },
+        {
+          "parse_ms": 14.981,
+          "release_ms": 1.187
+        },
+        {
+          "parse_ms": 13.039,
+          "release_ms": 1.053
+        }
+      ],
+      "exports": {
+        "declarations": {
+          "elapsed_s": 0.57,
+          "user_s": 0.34,
+          "system_s": 0.34,
+          "peak_rss_kib": 470396,
+          "major_faults": 22,
+          "minor_faults": 800,
+          "wall_s": 0.5800705649999713,
+          "bytes": 43443199,
+          "sha256": "4ce11c0156fc610b97846bd66643e36e5897be67dc93e632e61f9e41912292ab"
+        },
+        "commands": {
+          "elapsed_s": 0.46,
+          "user_s": 0.23,
+          "system_s": 0.35,
+          "peak_rss_kib": 339084,
+          "major_faults": 21,
+          "minor_faults": 700,
+          "wall_s": 0.4668313270000226,
+          "bytes": 18746161,
+          "sha256": "d18174a85f6a5530ea30e797ec4a7bbde591d273144da6805a94d5f61a5da6fa"
+        }
+      },
+      "context_note": "Standalone repository project context; no external dependency source context was added."
+    }
+  ],
+  "optimization_experiments": {
+    "ordered_output_batches": {
+      "description": "Serialize and write ordered 1024-file batches instead of retaining every output string.",
+      "samples": [
+        {
+          "variant": "unbounded",
+          "iteration": 0,
+          "wall_s": 20.288158229000032,
+          "bytes": 814103484,
+          "sha256": "23d3cd412f16a467e83a46d9f9ae75f0d77b1ea419e26c986b30d5e949b8a890",
+          "rss_kib": 2538984,
+          "user_s": 8.55,
+          "system_s": 8.75
+        },
+        {
+          "variant": "bounded",
+          "iteration": 0,
+          "wall_s": 19.655708625999978,
+          "bytes": 814103484,
+          "sha256": "23d3cd412f16a467e83a46d9f9ae75f0d77b1ea419e26c986b30d5e949b8a890",
+          "rss_kib": 2278140,
+          "user_s": 9.09,
+          "system_s": 8.73
+        },
+        {
+          "variant": "bounded",
+          "iteration": 1,
+          "wall_s": 19.158301977000065,
+          "bytes": 814103484,
+          "sha256": "23d3cd412f16a467e83a46d9f9ae75f0d77b1ea419e26c986b30d5e949b8a890",
+          "rss_kib": 2292320,
+          "user_s": 9.22,
+          "system_s": 8.71
+        },
+        {
+          "variant": "unbounded",
+          "iteration": 1,
+          "wall_s": 18.15314407799997,
+          "bytes": 814103484,
+          "sha256": "23d3cd412f16a467e83a46d9f9ae75f0d77b1ea419e26c986b30d5e949b8a890",
+          "rss_kib": 2539160,
+          "user_s": 8.21,
+          "system_s": 8.98
+        },
+        {
+          "variant": "unbounded",
+          "iteration": 2,
+          "wall_s": 18.661505060999843,
+          "bytes": 814103484,
+          "sha256": "23d3cd412f16a467e83a46d9f9ae75f0d77b1ea419e26c986b30d5e949b8a890",
+          "rss_kib": 2540508,
+          "user_s": 8.43,
+          "system_s": 7.58
+        },
+        {
+          "variant": "bounded",
+          "iteration": 2,
+          "wall_s": 18.43795159299998,
+          "bytes": 814103484,
+          "sha256": "23d3cd412f16a467e83a46d9f9ae75f0d77b1ea419e26c986b30d5e949b8a890",
+          "rss_kib": 2308624,
+          "user_s": 9.25,
+          "system_s": 7.92
+        }
+      ],
+      "identical_output_sha256": "23d3cd412f16a467e83a46d9f9ae75f0d77b1ea419e26c986b30d5e949b8a890",
+      "median_peak_rss_reduction_percent": 9.721325162652217,
+      "median_elapsed_change_percent": 2.6621481728098306,
+      "interpretation": "Retained as a memory tradeoff; measured timing ranges overlap and the median is slower."
+    },
+    "output_buffer": {
+      "description": "Increase writer capacity from 8 KiB to 1 MiB on WSL/NTFS.",
+      "samples": [
+        {
+          "variant": "buffer8k",
+          "iteration": 0,
+          "wall_s": 18.385720459999987,
+          "bytes": 814098201,
+          "sha256": "b180a920b70a6c54527d7ed2c9dde6bd56b1d9c2310b449a51c8f47c4680fe40",
+          "rss_kib": 2281412,
+          "user_s": 8.37,
+          "system_s": 7.51
+        },
+        {
+          "variant": "buffer1m",
+          "iteration": 0,
+          "wall_s": 11.407476543000001,
+          "bytes": 814098201,
+          "sha256": "b180a920b70a6c54527d7ed2c9dde6bd56b1d9c2310b449a51c8f47c4680fe40",
+          "rss_kib": 2352100,
+          "user_s": 8.3,
+          "system_s": 6.36
+        },
+        {
+          "variant": "buffer1m",
+          "iteration": 1,
+          "wall_s": 11.267468971,
+          "bytes": 814098201,
+          "sha256": "b180a920b70a6c54527d7ed2c9dde6bd56b1d9c2310b449a51c8f47c4680fe40",
+          "rss_kib": 2330184,
+          "user_s": 7.96,
+          "system_s": 6.5
+        },
+        {
+          "variant": "buffer8k",
+          "iteration": 1,
+          "wall_s": 18.02366966400001,
+          "bytes": 814098201,
+          "sha256": "b180a920b70a6c54527d7ed2c9dde6bd56b1d9c2310b449a51c8f47c4680fe40",
+          "rss_kib": 2283672,
+          "user_s": 8.57,
+          "system_s": 7.02
+        }
+      ],
+      "identical_output_sha256": "b180a920b70a6c54527d7ed2c9dde6bd56b1d9c2310b449a51c8f47c4680fe40",
+      "median_elapsed_reduction_percent": 37.72225945895934,
+      "interpretation": "Complete FLT declaration-export improvement, not a core parsing throughput measurement."
+    },
+    "absolute_value_signature": {
+      "source_bytes": 49188,
+      "source_sha256": "be2d5c1e1801c1c1d3d477215b22c7a1ea66ab6bd0be7ae9b2964e8f571632a6",
+      "before": {
+        "runs": [
+          {
+            "run": 0,
+            "warmup": true,
+            "bytes": 49188,
+            "parse_ms": 115.714061
+          },
+          {
+            "run": 1,
+            "warmup": false,
+            "bytes": 49188,
+            "parse_ms": 114.479258
+          },
+          {
+            "run": 2,
+            "warmup": false,
+            "bytes": 49188,
+            "parse_ms": 115.356067
+          },
+          {
+            "run": 3,
+            "warmup": false,
+            "bytes": 49188,
+            "parse_ms": 113.395614
+          },
+          {
+            "run": 4,
+            "warmup": false,
+            "bytes": 49188,
+            "parse_ms": 108.119069
+          },
+          {
+            "run": 5,
+            "warmup": false,
+            "bytes": 49188,
+            "parse_ms": 108.158521
+          },
+          {
+            "run": 6,
+            "warmup": false,
+            "bytes": 49188,
+            "parse_ms": 112.649729
+          },
+          {
+            "run": 7,
+            "warmup": false,
+            "bytes": 49188,
+            "parse_ms": 113.82446
+          }
+        ],
+        "median_ms": 113.395614,
+        "min_ms": 108.119069,
+        "max_ms": 115.356067
+      },
+      "after": {
+        "runs": [
+          {
+            "run": 0,
+            "warmup": true,
+            "bytes": 49188,
+            "parse_ms": 0.968014
+          },
+          {
+            "run": 1,
+            "warmup": false,
+            "bytes": 49188,
+            "parse_ms": 0.125162
+          },
+          {
+            "run": 2,
+            "warmup": false,
+            "bytes": 49188,
+            "parse_ms": 0.124318
+          },
+          {
+            "run": 3,
+            "warmup": false,
+            "bytes": 49188,
+            "parse_ms": 0.123727
+          },
+          {
+            "run": 4,
+            "warmup": false,
+            "bytes": 49188,
+            "parse_ms": 0.123759
+          },
+          {
+            "run": 5,
+            "warmup": false,
+            "bytes": 49188,
+            "parse_ms": 0.123526
+          },
+          {
+            "run": 6,
+            "warmup": false,
+            "bytes": 49188,
+            "parse_ms": 0.123567
+          },
+          {
+            "run": 7,
+            "warmup": false,
+            "bytes": 49188,
+            "parse_ms": 0.123683
+          }
+        ],
+        "median_ms": 0.123727,
+        "min_ms": 0.123526,
+        "max_ms": 0.125162
+      },
+      "median_speedup": 916.49853306069,
+      "threads": 1,
+      "warmups": 1,
+      "measured_runs": 7,
+      "absolute_value_expressions": 8192,
+      "baseline_and_final_complete_declaration_json_equal": true,
+      "signature_text_bytes": 49180,
+      "interpretation": "Constructed worst case for repeated signature lookahead; the speedup does not describe ordinary corpus throughput."
+    },
+    "comparison_scope": "Each paired experiment used the same scanner and corpus within that experiment, except the signature stress experiment which compares the original and final parser. Scanner correctness fixes landed between experiments; output hashes from different experiments are not expected to match."
+  }
+}
