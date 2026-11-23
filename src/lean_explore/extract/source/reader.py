@@ -309,6 +309,11 @@ def extract_source_package(
         logger.warning("No sources found for %s at %s", package_config.name, directory)
         return []
     link_base = source_link_base(package_config.git_url, read_commit(directory))
+    subdirectory = package_config.source_subdirectory.strip("/")
+    if subdirectory:
+        # Modules are named from the subdirectory, links from the repository.
+        directory = directory / subdirectory
+        link_base = f"{link_base}{subdirectory}/"
     logger.info("[%s] Parsing sources (no build)", package_config.name)
     return parse_package_sources(
         directory,
