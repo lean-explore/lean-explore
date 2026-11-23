@@ -1,228 +1,218 @@
 """Tests for finding the declarations a signature refers to."""
 
-import pytest
-
+from lean_explore.extract.source.names import NameTable, Use
 from lean_explore.extract.source.references import (
-    FileScopes,
-    Scope,
-    bound_names,
     find_references,
-    opened_namespaces,
-    resolve,
-    signature_bound_names,
-    strip_comments_and_strings,
+    signature_binder_names,
 )
-from tests.extract.source.fixtures import make_repository
+from lean_explore.extract.source.scopes import Scope, parse_open, parse_variables
 
-KNOWN = {
+NAMES = {
     "Nat",
-    "Nat.succ",
     "Set",
-    "Set.image",
-    "Pkg.Point",
-    "Pkg.Point.norm",
+    "Good",
+    "Flag",
+    "Box",
+    "X",
+    "x",
+    "b",
+    "u",
+    "helper",
     "Pkg.addOne",
-    "Other.helper",
-    "I",
+    "Pkg.Point",
 }
 
 
-def command(source: str, kind: str, text: str) -> dict:
-    """Build a command record for the first occurrence of ``text``."""
-    encoded = source.encode("utf-8")
-    start = encoded.index(text.encode("utf-8"))
-    end = start + len(text.encode("utf-8"))
-    return {"kind": kind, "range": (start, 0, 0, end, 0, 0)}
+def references(
+    signature: str,
+    name: str = "t",
+    scope: Scope | None = None,
+    **options,
+) -> list[str] | None:
+    """Find the references of a signature among the test names."""
+    use = Use(name, (scope or Scope()).opened)
+    return find_references(
+        signature, scope or Scope(), NameTable(NAMES), use, **options
+    )
 
 
-def test_strip_comments_and_strings_removes_their_words():
-    """Words in comments and strings are not left in the text."""
-    text = 'theorem t /- Set -/ : "Nat" = x -- Other.helper'
-    stripped = strip_comments_and_strings(text)
-    assert "Set" not in stripped
-    assert "Nat" not in stripped
-    assert "Other" not in stripped
-    assert "theorem t" in stripped
+def variables(*commands: str, **options) -> Scope:
+    """Build a scope from ``variable`` commands."""
+    found = tuple(v for command in commands for v in parse_variables(command))
+    return Scope(variables=found, **options)
 
 
-def test_bound_names_reads_bracket_and_keyword_binders():
-    """Binder names come from brackets and from quantifier-style binders."""
-    text = "(a b : Nat) {s : Set Nat} [inst : Foo] : ∀ x, ∃ y z, fun w => a"
-    assert bound_names(text) == {"a", "b", "s", "inst", "x", "y", "z", "w"}
+def test_references_keep_first_appearance_order():
+    """References are listed once, in the order they are written."""
+    signature = "theorem Pkg.t (n : Nat) (p : Point) : addOne n = addOne (addOne n)"
+    assert references(signature, "Pkg.t") == ["Nat", "Pkg.Point", "Pkg.addOne"]
 
 
-def test_bound_names_ignores_definitions_and_qualified_names():
-    """A ``:=`` is not a binder colon and dotted names are not binders."""
-    assert bound_names("(x := 1) (Foo.bar : Nat)") == set()
-
-
-def test_signature_bound_names_ignores_ascriptions_in_the_type():
-    """A bracketed ``(x : T)`` after the type colon is not a binder."""
-    signature = "theorem t {s : Set Nat} (h := 1) : (I : Set Nat) = ∀ x, s"
-    assert signature_bound_names(signature) == {"s", "x"}
-
-
-def test_signature_bound_names_without_a_type():
-    """A signature with no type colon is all binders."""
-    assert signature_bound_names("def f (n : Nat)") == {"n"}
-
-
-@pytest.mark.parametrize(
-    ("text", "expected"),
-    [
-        ("open Set Filter", ["Set", "Filter"]),
-        ("open scoped Topology in", ["Topology"]),
-        ("open Set (image preimage)", ["Set"]),
-        ("open Set hiding image", ["Set"]),
-        ("open Set renaming image → img", ["Set"]),
-    ],
-)
-def test_opened_namespaces(text, expected):
-    """Only the namespaces of an ``open`` command are returned."""
-    assert opened_namespaces(text) == expected
-
-
-def test_resolve_prefers_the_declaration_namespace():
-    """A name in the declaration's own namespace wins over the root."""
-    assert resolve("addOne", "Pkg.thing", (), KNOWN) == "Pkg.addOne"
-    assert resolve("Nat", "Pkg.thing", (), KNOWN) == "Nat"
-
-
-def test_resolve_uses_opened_namespaces():
-    """An opened namespace makes its members available unqualified."""
-    assert resolve("helper", "Pkg.thing", (), KNOWN) is None
-    assert resolve("helper", "Pkg.thing", ("Other",), KNOWN) == "Other.helper"
-
-
-def test_resolve_opened_namespace_relative_to_the_current_one():
-    """``open Point`` inside ``Pkg`` reaches ``Pkg.Point``."""
-    assert resolve("norm", "Pkg.thing", ("Point",), KNOWN) == "Pkg.Point.norm"
-
-
-def test_resolve_drops_trailing_field_access():
-    """A dotted identifier falls back to its longest known prefix."""
-    assert resolve("Nat.succ.injective", "t", (), KNOWN) == "Nat.succ"
-    assert resolve("unknown.field", "t", (), KNOWN) is None
-
-
-def test_find_references_lists_names_in_order_without_self():
-    """References keep first-appearance order and leave out the declaration."""
-    signature = "theorem Pkg.addOne_succ (n : Nat) : Pkg.addOne n = Nat.succ n"
-    references = find_references("Pkg.addOne_succ", signature, Scope(), KNOWN)
-    assert references == ["Nat", "Pkg.addOne", "Nat.succ"]
-
-
-def test_find_references_skips_bound_names():
-    """A binder named like a constant is not a reference to it."""
-    signature = "theorem t (I : Set Nat) : I = I"
-    assert find_references("t", signature, Scope(), KNOWN) == ["Set", "Nat"]
-
-
-def test_find_references_keeps_ascribed_constants():
-    """A constant with a type ascription in the type is still a reference."""
-    signature = "theorem t : (I : Set Nat) = I"
-    assert find_references("t", signature, Scope(), KNOWN) == ["I", "Set", "Nat"]
-
-
-def test_find_references_skips_variables_and_their_fields():
-    """Names bound by ``variable`` are local, including field access on them."""
-    scope = Scope(bound=frozenset({"I"}))
-    assert find_references("t", "theorem t : I.image = I", scope, KNOWN) is None
-
-
-def test_find_references_returns_none_without_references():
+def test_no_references_is_none():
     """A signature with no known names has no references."""
-    assert find_references("t", "theorem t : True", Scope(), KNOWN) is None
+    assert references("theorem t : True") is None
+    assert references("def t") is None
 
 
-def test_file_scopes_follow_sections_and_namespaces():
-    """Opens and variables last until the end of their section."""
-    source = (
-        "open Set\n"
-        "section\n"
-        "open Other\n"
-        "variable (I : Nat)\n"
-        "theorem first : True := trivial\n"
-        "end\n"
-        "theorem second : True := trivial\n"
-    )
-    commands = [
-        command(source, "open", "open Set"),
-        command(source, "section", "section"),
-        command(source, "open", "open Other"),
-        command(source, "variable", "variable (I : Nat)"),
-        command(source, "declaration", "theorem first : True := trivial"),
-        command(source, "end", "end"),
-        command(source, "declaration", "theorem second : True := trivial"),
+def test_the_declaration_itself_is_not_a_reference():
+    """A declaration does not refer to itself."""
+    assert references("theorem x : x = x", "x") is None
+
+
+def test_head_binders_are_local():
+    """Bracketed, untyped and bare binders are not references."""
+    assert references("theorem t (x : Nat) {b} : x = b") == ["Nat"]
+    assert references("def t x b : Nat") == ["Nat"]
+    assert references("instance (priority := 100) t : Good x") == ["Good", "x"]
+
+
+def test_words_before_the_name_are_not_binders():
+    """A keyword before the declaration's name does not hide a constant."""
+    assert references("theorem t : theorem") is None
+    assert signature_binder_names("structure Box (X : Nat) extends Good X", "Box") == [
+        "X"
     ]
-    scopes = FileScopes(source, commands)
-    first = scopes.at(source.index("theorem first"))
-    second = scopes.at(source.index("theorem second"))
-    assert first == Scope(("Set", "Other"), frozenset({"I"}))
-    assert second == Scope(("Set",), frozenset())
+    assert signature_binder_names("instance : Good x", "inst") == []
 
 
-def test_file_scopes_open_in_applies_to_one_command():
-    """``open ... in`` reaches only the command that follows it."""
-    source = (
-        "open Other in\n"
-        "theorem first : True := trivial\n"
-        "theorem second : True := trivial\n"
-    )
-    commands = [
-        command(source, "open", "open Other in"),
-        command(source, "declaration", "theorem first : True := trivial"),
-        command(source, "declaration", "theorem second : True := trivial"),
+def test_ascription_in_the_type_is_not_a_binder():
+    """``(x : T)`` after the colon ascribes a type to the constant ``x``."""
+    assert references("theorem t : (x : Nat) = x") == ["x", "Nat"]
+
+
+def test_quantifier_binders_are_scoped():
+    """A bound name is local only inside its binder's scope."""
+    assert references("theorem t : (∀ x : Nat, x = x) ∧ x = x") == ["Nat", "x"]
+    assert references("theorem t : ∀ (a : Nat) (b : Nat), a = b") == ["Nat"]
+    assert references("theorem t : ∃ x b, x = b") is None
+    assert references("theorem t : ∀ x ∈ b, x = x") == ["b"]
+
+
+def test_binder_marks_and_stop_words():
+    """``Σ'``, ``∃!`` and ``∫ x in …`` bind the name after them."""
+    assert references("def t : Σ' X : Nat, X = X") == ["Nat"]
+    assert references("theorem t : ∃! x, x = b") == ["b"]
+    assert references("theorem t : ∫ x in b, x = 0") == ["b"]
+
+
+def test_a_binder_without_an_end_binds_nothing():
+    """A quantifier with no body is read as ordinary names."""
+    assert references("theorem t : ∀ x") == ["x"]
+
+
+def test_function_and_pi_binders():
+    """``fun`` and dependent-arrow binders are local to what follows."""
+    assert references("def t : (fun x => x) = fun b ↦ b") is None
+    assert references("def t : (X : Nat) → X = X") == ["Nat"]
+    assert references("def t : (X : Nat) = X") == ["X", "Nat"]
+
+
+def test_set_builder_binds_inside_the_braces():
+    """The name of ``{x | …}`` and ``{x // …}`` is local to the braces."""
+    assert references("def t : Set Nat → {x | x = b}") == ["Set", "Nat", "b"]
+    assert references("def t : {x : Nat // x = b} → x") == ["Nat", "b", "x"]
+
+
+def test_local_definitions_bind_the_rest():
+    """``let`` and ``have`` introduce a local name."""
+    assert references("def t : let x := b; x = x") == ["b"]
+
+
+def test_named_arguments_and_field_access_are_not_references():
+    """A label before ``:=`` and a field after a dot are not constants."""
+    assert references("theorem t : helper (x := b) = (b).x") == ["helper", "b"]
+
+
+def test_automatic_argument_tactics_are_not_read():
+    """The tactic of ``(h : P := by …)`` is not part of the type."""
+    assert references("def t (h : Good x := by exact helper b) : Nat") == [
+        "Good",
+        "x",
+        "Nat",
     ]
-    scopes = FileScopes(source, commands)
-    assert scopes.at(source.index("theorem first")).opened == ("Other",)
-    assert scopes.at(source.index("theorem second")).opened == ()
 
 
-def test_file_scopes_before_the_first_command_and_unbalanced_end():
-    """Offsets before any command and a stray ``end`` do not fail."""
-    source = "end\ntheorem t : True := trivial\n"
-    commands = [command(source, "end", "end")]
-    scopes = FileScopes(source, commands)
-    assert scopes.at(len(source)) == Scope()
-    assert FileScopes("", []).at(0) == Scope()
+def test_default_values_are_part_of_the_type():
+    """The type before ``:=`` in a binder is read, and so is the default."""
+    assert references("theorem t (n : Nat := b) : Good n") == ["Nat", "b", "Good"]
 
 
-SOURCE_PACKAGE = """namespace Pkg
-
-/-- A point. -/
-structure Point where
-  x : Nat
-
-def addOne (n : Nat) : Nat := n + 1
-
-section
-variable (addOne : Nat)
-
-theorem shadowed : addOne = addOne := rfl
-
-end
-
-theorem addOne_pos (p : Point) : 0 < addOne p.x := Nat.succ_pos _
-
-end Pkg
-
-open Pkg in
-theorem outside : addOne 0 = 1 := rfl
-"""
+def test_syntax_declarations_and_values_are_not_types():
+    """A macro has no type; a value after the type is not read."""
+    assert references('macro "m" : term => helper', kind="macro") is None
+    assert references("initialize t : Box ← helper", kind="initialize") == ["Box"]
+    option = "register_option t : Nat := { defValue := b }"
+    assert references(option, kind="register_option") == ["Nat"]
 
 
-def test_parse_package_sources_stores_references(tmp_path):
-    """Source rows carry the references found in their signatures."""
-    pytest.importorskip("lean_source_parser")
-    from lean_explore.extract.source.reader import parse_package_sources
+def test_universe_levels_are_not_constants():
+    """What follows ``Type`` or ``Sort`` is a level, not the constant ``u``."""
+    assert references("def t (α : Type u) (β : Sort (max u b)) : Nat.{u}") == ["Nat"]
+    assert references("def t : Type → u") == ["u"]
 
-    root = make_repository(tmp_path / "pkg", {"Pkg/Basic.lean": SOURCE_PACKAGE})
-    rows = parse_package_sources(
-        root, "https://example.com/", lambda module: True, known_names={"Nat"}
-    )
-    dependencies = {row.name: row.dependencies for row in rows}
-    assert dependencies["Pkg.addOne"] == ["Nat"]
-    assert dependencies["Pkg.shadowed"] is None
-    assert dependencies["Pkg.addOne_pos"] == ["Pkg.Point", "Pkg.addOne"]
-    assert dependencies["outside"] == ["Pkg.addOne"]
+
+def test_deriving_and_extends():
+    """A deriving clause is not read; structure parents are references."""
+    assert references("| k : Box deriving Good", "Box.k", kind="constructor") == ["Box"]
+    assert references("structure t (x : Nat) extends Good x") == ["Nat", "Good"]
+
+
+def test_parent_projection_is_all_type():
+    """A parent projection's signature is its parent, with no head."""
+    found = references("Good b", "t.toGood", kind="parent_projection")
+    assert found == ["Good", "b"]
+
+
+def test_further_bound_names():
+    """Binders of the owning structure are local to its fields."""
+    assert references("val : X", "S.val", bound=["X"]) is None
+    assert references("val : X", "S.val") == ["X"]
+
+
+def test_opened_names_resolve():
+    """Open declarations of the scope are used."""
+    scope = Scope(opened=tuple(parse_open("open Pkg", "")))
+    assert references("theorem t : addOne = addOne", scope=scope) == ["Pkg.addOne"]
+
+
+def test_used_variable_brings_its_type():
+    """A section variable in the signature adds the references of its type."""
+    scope = variables("variable (v : Box) (w : Good v)")
+    assert references("theorem t : v = v", scope=scope) == ["Box"]
+    assert references("theorem t : w = w", scope=scope) == ["Good", "Box"]
+    assert references("theorem t : True", scope=scope) is None
+
+
+def test_local_binder_shadows_a_variable():
+    """A binder with a variable's name does not include the variable."""
+    scope = variables("variable (v : Box)")
+    assert references("theorem t (v : Nat) : v = v", scope=scope) == ["Nat"]
+
+
+def test_instance_variables_follow_their_variables():
+    """An instance variable is included once everything it mentions is."""
+    scope = variables("variable {α : Type} [Good α] [Flag]")
+    assert references("theorem t (a : α) : a = a", scope=scope) == ["Good", "Flag"]
+    assert references("theorem t : True", scope=scope) == ["Flag"]
+    assert references("structure t", scope=scope, kind="structure") is None
+
+
+def test_omitted_and_included_variables():
+    """``omit`` drops an instance variable; ``include`` forces a variable."""
+    omitted = variables("variable {α : Type} [Good α]", omitted=frozenset({"[Good α]"}))
+    assert references("theorem t (a : α) : a = a", scope=omitted) is None
+    included = variables("variable (v : Box)", included=frozenset({"v"}))
+    assert references("theorem t : True", scope=included) == ["Box"]
+
+
+def test_definition_bodies_include_their_variables():
+    """A definition includes variables its body uses; a theorem does not."""
+    scope = variables("variable (v : Box)")
+    body = "def t : Nat := v.val"
+    assert references("def t : Nat", scope=scope, kind="def", body=body) == [
+        "Nat",
+        "Box",
+    ]
+    assert references("theorem t : Nat", scope=scope, kind="theorem", body=body) == [
+        "Nat"
+    ]

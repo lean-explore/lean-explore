@@ -24,7 +24,17 @@ from typing import Any
 from lean_explore.extract.docgen.lean_source import select_source_lines
 from lean_explore.extract.packages.config import PackageConfig
 from lean_explore.extract.source.fetch import read_commit, source_directory
-from lean_explore.extract.source.references import FileScopes, Scope, find_references
+from lean_explore.extract.source.lexer import tokenize
+from lean_explore.extract.source.resolution import (
+    Row,
+    SourceFile,
+    is_named,
+    lookup_namespaces,
+    name_table,
+    owner_context,
+    resolve_rows,
+)
+from lean_explore.extract.source.scopes import FileScopes
 from lean_explore.extract.types import Declaration
 
 logger = logging.getLogger(__name__)
@@ -183,29 +193,50 @@ def _to_declaration(
     )
 
 
-def _file_rows(
+def _read_file(
     parser: ModuleType,
     path: Path,
+    module: str,
     file_declarations: list[dict[str, Any]],
     link_base: str,
     include_approximate: bool,
-) -> list[tuple[Declaration, str, Scope]]:
-    """Build the rows of one file, each with its signature and scope."""
-    with open(path, encoding="utf-8") as source_file:
+) -> SourceFile:
+    """Read one file's declarations, scopes, imports and exports."""
+    with open(path, encoding="utf-8", errors="replace") as source_file:
         lines = source_file.readlines()
     # Byte offsets from the parser refer to the file as stored, so the scopes
     # are computed from the undecoded newlines.
-    source = path.read_bytes().decode("utf-8")
-    scopes = FileScopes(source, parser.commands(source))
-    return [
-        (
-            _to_declaration(declaration, lines, str(path), link_base),
-            declaration.get("signature_text") or "",
-            scopes.at(declaration["range"][0]),
-        )
-        for declaration in file_declarations
-        if is_stored(declaration, include_approximate)
+    source_bytes = path.read_bytes()
+    source = source_bytes.decode("utf-8", "replace")
+    commands = parser.commands(source)
+    scopes = FileScopes(source, commands)
+    imports = [
+        tokenize(source_bytes[c["range"][0] : c["range"][3]].decode("utf-8", "replace"))
+        for c in commands
+        if c["kind"] == "import"
     ]
+    rows = []
+    for declaration in file_declarations:
+        if not is_named(declaration, include_approximate):
+            continue
+        stored = is_stored(declaration, include_approximate)
+        scope = scopes.at(declaration["range"][0])
+        bound, siblings = owner_context(declaration, file_declarations)
+        rows.append(
+            Row(
+                declaration,
+                scope,
+                _to_declaration(declaration, lines, str(path), link_base)
+                if stored
+                else None,
+                lookup_namespaces(declaration, scope, file_declarations),
+                bound,
+                siblings,
+            )
+        )
+    names = [tokens[-1].text for tokens in imports if tokens]
+    owners = [declaration["name"] for declaration in file_declarations]
+    return SourceFile(module, rows, names, scopes.aliases, owners)
 
 
 def parse_package_sources(
@@ -235,19 +266,22 @@ def parse_package_sources(
     parsed = parser.parse_files(
         [str(path) for path in paths], root=str(source_root), text=True
     )
-    rows: dict[str, tuple[Declaration, str, Scope]] = {}
-    for path, file_declarations in zip(paths, parsed, strict=True):
-        for row in _file_rows(
-            parser, path, file_declarations, link_base, include_approximate
-        ):
-            rows.setdefault(row[0].name, row)
-    names = set(rows) | set(known_names)
-    for declaration, signature, scope in rows.values():
-        declaration.dependencies = find_references(
-            declaration.name, signature, scope, names
+    files = [
+        _read_file(
+            parser,
+            path,
+            _module_name(path, source_root),
+            file_declarations,
+            link_base,
+            include_approximate,
         )
-    logger.info("Parsed %d source files into %d declarations", len(paths), len(rows))
-    return [declaration for declaration, _, _ in rows.values()]
+        for path, file_declarations in zip(paths, parsed, strict=True)
+    ]
+    declarations = resolve_rows(files, name_table(files, known_names))
+    logger.info(
+        "Parsed %d source files into %d declarations", len(paths), len(declarations)
+    )
+    return declarations
 
 
 def extract_source_package(
