@@ -1,7 +1,7 @@
 """Turn a package's Lean sources into declaration rows without building it.
 
-The build-free parser in ``parser/`` (Python module ``lean_source_parser``)
-reads every source file of the package and reports each declaration with the
+The build-free parser in ``src/lean_explore/parser/`` (Python module
+``lean_source_parser``) reads every source file of the package and reports each declaration with the
 ranges Lean records for it. The rows match what the doc-gen4 path stores for
 the same declaration: the same line range, source text, docstring and source
 link format.
@@ -10,7 +10,7 @@ The parser does not elaborate, so the rows have no dependencies, anonymous
 instances are skipped because their names come from the elaborated type, and
 names that attributes such as ``to_additive`` derive by rule are left out
 unless requested, because they are guesses.
-Install the parser with ``pip install ./parser/crates/lean-source-py``.
+Install the parser with ``pip install ./src/lean_explore/parser/crates/lean-source-py``.
 """
 
 import importlib
@@ -54,7 +54,7 @@ def load_parser() -> ModuleType:
     except ImportError as error:
         raise RuntimeError(
             "Source extraction needs the lean_source_parser module; install it "
-            "with `pip install ./parser/crates/lean-source-py`"
+            "with `pip install ./src/lean_explore/parser/crates/lean-source-py`"
         ) from error
 
 

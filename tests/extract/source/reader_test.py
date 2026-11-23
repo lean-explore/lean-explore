@@ -149,7 +149,7 @@ def test_missing_parser_has_install_hint(monkeypatch):
         raise ImportError(name)
 
     monkeypatch.setattr(reader.importlib, "import_module", fail)
-    with pytest.raises(RuntimeError, match="pip install ./parser"):
+    with pytest.raises(RuntimeError, match="pip install ./src/lean_explore/parser"):
         load_parser()
 
 

@@ -38,8 +38,8 @@ A missing context file is an error. Use sources matching the project's dependenc
 Run `DumpRanges.lean` inside a matching built Lake environment, then compare its JSON Lines output with the parser export:
 
 ```sh
-lake env lean --run /path/to/parser/validation/DumpRanges.lean ranges.jsonl Mathlib Mathlib
-python /path/to/parser/validation/compare.py ranges.jsonl mathlib.jsonl "$MATHLIB" \
+lake env lean --run /path/to/src/lean_explore/parser/validation/DumpRanges.lean ranges.jsonl Mathlib Mathlib
+python /path/to/src/lean_explore/parser/validation/compare.py ranges.jsonl mathlib.jsonl "$MATHLIB" \
   --report comparison --json comparison-metrics.json --require-authored-exact
 ```
 

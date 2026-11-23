@@ -178,7 +178,7 @@ under `lean/<name>/`.
 A package whose `PackageConfig` sets `extraction=ExtractionMethod.SOURCE` is not built. `--run-doc-gen4` clones its repository into `lean/<name>/source/` at the ref its version strategy selects, and the parse step reads its Lean files with the build-free parser in `parser/`. Install the parser's Python bindings first:
 
 ```bash
-pip install ./parser/crates/lean-source-py
+pip install ./src/lean_explore/parser/crates/lean-source-py
 ```
 
 The rows have the same name, module, line range, source text, docstring and source link format as doc-gen4 rows. The parser does not elaborate, so they differ in three ways:
