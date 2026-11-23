@@ -100,6 +100,33 @@ class TestContextSourceFiles:
             "lean/plain/source/Plain.lean",
         ]
 
+    def test_dependencies_of_dependencies(self, tmp_path, monkeypatch):
+        """A registered dependency adds its own dependencies and subdirectory."""
+        lean_root = tmp_path / "lean"
+        _write(lean_root / "core" / "source", {"src/Init.lean": "", "tests/T.lean": ""})
+        _write(lean_root / "middle" / "source", {"Middle.lean": ""})
+        registry = {
+            "core": PackageConfig(
+                name="core", git_url="u", module_prefixes=[], source_subdirectory="src"
+            ),
+            "middle": PackageConfig(
+                name="middle", git_url="u", module_prefixes=[], depends_on=["core"]
+            ),
+        }
+        monkeypatch.setattr(
+            "lean_explore.extract.packages.registry.PACKAGE_REGISTRY", registry
+        )
+        config = PackageConfig(
+            name="pkg", git_url="u", module_prefixes=["Pkg"], depends_on=["middle"]
+        )
+
+        files = context_source_files(lean_root, config)
+
+        assert [str(path.relative_to(lean_root)) for path in files] == [
+            "middle/source/Middle.lean",
+            "core/source/src/Init.lean",
+        ]
+
     def test_nothing_present(self, tmp_path):
         """A package without toolchain or dependency sources has no context."""
         config = PackageConfig(name="pkg", git_url="u", module_prefixes=["Pkg"])

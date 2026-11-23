@@ -326,6 +326,11 @@ def extract_source_package(
         return []
     link_base = source_link_base(package_config.git_url, read_commit(directory))
     context_paths = context_source_files(lean_root, package_config)
+    subdirectory = package_config.source_subdirectory.strip("/")
+    if subdirectory:
+        # Modules are named from the subdirectory, links from the repository.
+        directory = directory / subdirectory
+        link_base = f"{link_base}{subdirectory}/"
     logger.info(
         "[%s] Parsing sources (no build) with %d context files",
         package_config.name,

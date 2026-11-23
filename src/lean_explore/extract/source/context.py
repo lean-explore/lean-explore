@@ -43,13 +43,35 @@ def toolchain_source_directory(package_directory: Path) -> Path | None:
     return directory if directory.is_dir() else None
 
 
+def _dependency_directories(package_config: PackageConfig) -> list[tuple[str, str]]:
+    """List the packages a package depends on, directly or through another.
+
+    Returns:
+        Each dependency's name with the subdirectory that holds its modules.
+        A dependency that is not registered has no further dependencies.
+    """
+    from lean_explore.extract.packages.registry import PACKAGE_REGISTRY
+
+    found: dict[str, str] = {}
+    waiting = list(package_config.depends_on)
+    while waiting:
+        name = waiting.pop(0)
+        if name in found:
+            continue
+        dependency = PACKAGE_REGISTRY.get(name)
+        found[name] = dependency.source_subdirectory.strip("/") if dependency else ""
+        waiting.extend(dependency.depends_on if dependency else [])
+    return list(found.items())
+
+
 def context_source_files(lean_root: Path, package_config: PackageConfig) -> list[Path]:
     """List the Lean files outside a source package that it can refer to.
 
     These are the sources of the package's Lean toolchain, if elan has it
-    installed, and of the packages it depends on: the Lake packages of a
-    dependency that was built for doc-gen4 (``lean/<dependency>/.lake/packages``)
-    and the clone of a dependency that is itself a source package.
+    installed, and of every package it depends on, directly or through another
+    package: the Lake packages of a dependency that was built for doc-gen4
+    (``lean/<dependency>/.lake/packages``) and the modules of a dependency
+    that is itself a source package.
 
     Args:
         lean_root: Root directory containing the package workspaces.
@@ -62,9 +84,9 @@ def context_source_files(lean_root: Path, package_config: PackageConfig) -> list
     directories = [
         toolchain_source_directory(source_directory(lean_root, package_config.name))
     ]
-    for dependency in package_config.depends_on:
-        directories.append(lean_root / dependency / ".lake" / "packages")
-        directories.append(source_directory(lean_root, dependency))
+    for name, subdirectory in _dependency_directories(package_config):
+        directories.append(lean_root / name / ".lake" / "packages")
+        directories.append(source_directory(lean_root, name) / subdirectory)
     files: list[Path] = []
     for directory in directories:
         if directory is not None and directory.is_dir():

@@ -90,7 +90,7 @@ where = ["src"]
 exclude = ["lean_explore.parser*"]
 
 [tool.setuptools.package-data]
-"lean_explore.extract.informalize" = ["prompt.txt"]
+"lean_explore.extract.informalize" = ["prompt.txt", "common_dependencies.txt"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

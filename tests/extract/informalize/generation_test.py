@@ -12,6 +12,7 @@ from lean_explore.extract.informalize.generation import (
     InformalizationRun,
     LayerProgress,
     build_prompt,
+    common_dependencies,
     format_dependencies,
     process_layer,
     process_one_declaration,
@@ -69,6 +70,32 @@ class TestPromptBuilding:
         text = format_dependencies(["A"], {"A": "x" * 300})
 
         assert text == "Dependencies:\n- A: " + "x" * 253 + "..."
+
+    def test_common_dependencies_are_left_out(self):
+        """Names on the common list are not described, whatever their order."""
+        described = {"Eq": "equality.", "HAdd.hAdd": "addition.", "Foo.bar": "bar."}
+
+        text = format_dependencies(["Eq", "HAdd.hAdd", "Foo.bar"], described)
+
+        assert text == "Dependencies:\n- Foo.bar: bar."
+        assert format_dependencies(["Eq", "Nat"], {"Eq": "e.", "Nat": "n."}) == ""
+
+    def test_common_dependencies_do_not_use_up_the_limit(self):
+        """Skipped names leave room for the dependencies after them."""
+        names = ["Eq"] * 5 + [f"D{i}" for i in range(20)]
+        descriptions = {name: "d." for name in names}
+
+        text = format_dependencies(names, descriptions)
+
+        assert text.count("\n- ") == 20 and "D19" in text
+
+    def test_common_dependency_list_is_read_from_its_file(self):
+        """The list holds one name per line, without comments or blanks."""
+        names = common_dependencies()
+
+        assert {"Eq", "Iff", "HAdd.hAdd", "LE.le", "Nat", "Real"} <= names
+        assert not any(name.startswith("#") or " " in name for name in names)
+        assert "Filter.Tendsto" not in names
 
     def test_only_first_twenty_dependencies_are_considered(self):
         """Dependencies after the twentieth are ignored."""

@@ -17,15 +17,19 @@ python -m lean_explore.extract [OPTIONS]
 
 Four stages, run in order:
 
-1. **doc-gen4** (optional, `--run-doc-gen4`): runs Lake + doc-gen4 against
-   each package workspace in `lean/<package>/` to produce structured
-   declaration data (BMP files). This is the slow step: it builds Lean
-   packages from source.
-2. **Parse** (`--parse-docs`): reads the doc-gen4 output and writes one
-   row per declaration into a fresh SQLite database under a new
-   `YYYYMMDD_HHMMSS` directory in `LEAN_EXPLORE_DATA_DIR`.
+1. **Fetch** (optional, `--run-doc-gen4`): clones each registered package
+   at the ref its version strategy selects, into `lean/<package>/source/`.
+   Nothing is built. For a package configured to be built, this stage
+   instead runs Lake + doc-gen4 in its workspace, which is slow.
+2. **Parse** (`--parse-docs`): reads each package's sources with the
+   build-free parser (or its doc-gen4 output) and writes one row per
+   declaration into a fresh SQLite database under a new `YYYYMMDD_HHMMSS`
+   directory in `LEAN_EXPLORE_DATA_DIR`.
 3. **Informalize** (`--informalize`): calls an LLM (through OpenRouter) to
-   generate a natural-language description for each declaration.
+   generate a natural-language description for each declaration. The prompt
+   includes the descriptions of up to 20 of its dependencies, leaving out the
+   names listed in `extract/informalize/common_dependencies.txt` (`Eq`,
+   `HAdd.hAdd`, `Nat` and the like), which a model already knows.
 4. **Embed** (`--embeddings`): runs each informalization through the
    sentence-transformer to produce vector embeddings.
 5. **Index** (`--index`): builds the FAISS semantic index and the two BM25
@@ -161,16 +165,23 @@ extraction directory automatically.
 
 The registry lives in `src/lean_explore/extract/packages/registry.py`:
 
-- `mathlib`: also supplies `Batteries`, `Init`, `Lean`, `Std` from its
-  transitive dependencies.
-- `physlean`
+- `lean`: `Init`, `Std` and `Lean`, from the `src` directory of the Lean
+  repository, at its newest tag.
+- `batteries`
+- `mathlib`
+- `physlean`: `Physlib`, `PhyslibAlpha` and `QuantumInfo`
 - `flt`
 - `formal-conjectures`
 - `cslib`
 
-Each package entry specifies its git URL, version strategy (`LATEST` or
-`TAGGED`), and dependencies. Adding a new package means adding a
-`PackageConfig` to that registry and creating a corresponding workspace
+Every registered package is extracted from source (see the next section):
+`--run-doc-gen4` clones it and nothing is built. Each entry specifies its git
+URL, version strategy (`LATEST` for the default branch, `TAGGED` for the
+newest tag), the module prefixes that belong to it, and its dependencies.
+Adding a package means adding a `PackageConfig` to the registry.
+
+A package can still be built and read from doc-gen4 output by leaving its
+`extraction` at `ExtractionMethod.DOCGEN` and creating a Lake workspace for it
 under `lean/<name>/`.
 
 ## Packages without a build

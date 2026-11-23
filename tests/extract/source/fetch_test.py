@@ -2,11 +2,13 @@
 
 import pytest
 
-from lean_explore.extract.packages.config import PackageConfig
+from lean_explore.extract.packages.config import PackageConfig, VersionStrategy
 from lean_explore.extract.source import fetch
 from lean_explore.extract.source.fetch import (
     checkout_sources,
+    default_branch,
     fetch_package_sources,
+    package_ref,
     read_commit,
     source_directory,
 )
@@ -58,11 +60,31 @@ def test_git_failure_raises(tmp_path):
         checkout_sources(missing, "main", tmp_path / "clone")
 
 
+def test_default_branch(origin, tmp_path):
+    """The default branch is the one the remote's HEAD points to."""
+    assert default_branch(origin.as_uri()) == "main"
+    git(origin, "checkout", "-q", "--detach")
+    with pytest.raises(RuntimeError, match="default branch"):
+        default_branch(origin.as_uri())
+
+
+def test_package_ref_follows_the_version_strategy(origin, monkeypatch):
+    """LATEST uses the default branch and TAGGED the newest tag."""
+    monkeypatch.setattr(fetch, "fetch_latest_tag", lambda git_url: "v9")
+    latest = PackageConfig(
+        name="pkg",
+        git_url=origin.as_uri(),
+        module_prefixes=["Pkg"],
+        version_strategy=VersionStrategy.LATEST,
+    )
+    tagged = PackageConfig(name="pkg", git_url=origin.as_uri(), module_prefixes=["Pkg"])
+    assert package_ref(latest) == "main"
+    assert package_ref(tagged) == "v9"
+
+
 def test_fetch_uses_version_strategy_ref(origin, tmp_path, monkeypatch):
     """The ref comes from the package's version strategy."""
-    monkeypatch.setattr(
-        fetch, "get_package_toolchain", lambda config: ("toolchain", "v1")
-    )
+    monkeypatch.setattr(fetch, "package_ref", lambda config: "v1")
     config = PackageConfig(name="pkg", git_url=origin.as_uri(), module_prefixes=["Pkg"])
 
     directory = fetch_package_sources(config, tmp_path / "lean")

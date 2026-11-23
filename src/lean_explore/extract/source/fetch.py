@@ -9,8 +9,8 @@ import logging
 import subprocess
 from pathlib import Path
 
-from lean_explore.extract.packages.config import PackageConfig
-from lean_explore.extract.packages.workspace import get_package_toolchain
+from lean_explore.extract.packages.config import PackageConfig, VersionStrategy
+from lean_explore.extract.packages.github import fetch_latest_tag
 
 logger = logging.getLogger(__name__)
 
@@ -77,6 +77,42 @@ def read_commit(directory: Path) -> str:
     return _run_git(["rev-parse", "HEAD"], cwd=directory)
 
 
+def default_branch(git_url: str) -> str:
+    """Return the name of a repository's default branch.
+
+    Args:
+        git_url: Repository URL or path.
+
+    Returns:
+        The branch that the remote's ``HEAD`` points to.
+
+    Raises:
+        RuntimeError: If the remote does not say what its ``HEAD`` points to.
+    """
+    listing = _run_git(["ls-remote", "--symref", git_url, "HEAD"])
+    for line in listing.splitlines():
+        if line.startswith("ref: refs/heads/"):
+            return line.split()[1].removeprefix("refs/heads/")
+    raise RuntimeError(f"Could not find the default branch of {git_url}")
+
+
+def package_ref(package_config: PackageConfig) -> str:
+    """Return the branch or tag a source package is extracted at.
+
+    Unlike a built package, a source package needs no Lean toolchain, so only
+    the ref is looked up.
+
+    Args:
+        package_config: Configuration of the package.
+
+    Returns:
+        The default branch for ``LATEST``, the newest tag for ``TAGGED``.
+    """
+    if package_config.version_strategy is VersionStrategy.LATEST:
+        return default_branch(package_config.git_url)
+    return fetch_latest_tag(package_config.git_url)
+
+
 def fetch_package_sources(package_config: PackageConfig, lean_root: Path) -> Path:
     """Fetch a source package at the ref its version strategy selects.
 
@@ -87,7 +123,7 @@ def fetch_package_sources(package_config: PackageConfig, lean_root: Path) -> Pat
     Returns:
         The clone directory.
     """
-    _, git_ref = get_package_toolchain(package_config)
+    git_ref = package_ref(package_config)
     directory = source_directory(lean_root, package_config.name)
     logger.info("[%s] Fetching sources at %s", package_config.name, git_ref)
     checkout_sources(package_config.git_url, git_ref, directory)
