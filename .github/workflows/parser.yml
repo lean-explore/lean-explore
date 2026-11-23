@@ -60,4 +60,4 @@ jobs:
         working-directory: .
         run: |
           pip install -e . pytest pytest-asyncio
-          python -m pytest tests/extract/source tests/extract/docgen -q
+          python -m pytest tests/extract/source tests/extract/docgen tests/extract/informalize -q
