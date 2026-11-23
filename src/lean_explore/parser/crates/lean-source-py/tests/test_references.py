@@ -64,5 +64,64 @@ class ReferencesTest(unittest.TestCase):
         self.assertEqual(declarations["add_thing"]["references"], [])
 
 
+NOTATION = """prelude
+class HAdd (α β γ) where
+  hAdd : α → β → γ
+inductive Eq : α → α → Prop
+infixl:65 " + " => HAdd.hAdd
+infix:50 " = " => Eq
+"""
+
+USES_NOTATION = """structure Point where
+  x : Nat
+def Point.norm (p : Point) : Nat := p.x
+def twice (n : Nat) : Nat := n
+infixl:70 " ⋆ " => Point.norm
+theorem uses (p : Point) (h : p.norm = twice 1) : p.x + 1 = p.norm := sorry
+"""
+
+
+class NotationAndFieldsTest(unittest.TestCase):
+    """Check references made through notation and field access."""
+
+    def parse(self, with_context):
+        """Parse a file, with or without a stand-in for Lean's `Init`."""
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "pkg").mkdir()
+            (root / "pkg" / "Uses.lean").write_text(USES_NOTATION, encoding="utf-8")
+            (root / "lean").mkdir()
+            (root / "lean" / "Init.lean").write_text(NOTATION, encoding="utf-8")
+            files = lean_source_parser.parse_files(
+                [root / "pkg" / "Uses.lean"],
+                root=root / "pkg",
+                references=True,
+                context_paths=[root / "lean" / "Init.lean"] if with_context else None,
+            )
+        return {d["name"]: d for declarations in files for d in declarations}
+
+    def test_context_files_supply_notations(self):
+        """A token stands for the constants of the notation that declares it."""
+        declarations = self.parse(with_context=True)
+        self.assertEqual(
+            declarations["uses"]["references"],
+            ["Point", "Point.norm", "Eq", "twice", "Point.x", "HAdd.hAdd"],
+        )
+        without = self.parse(with_context=False)
+        self.assertEqual(
+            without["uses"]["references"],
+            ["Point", "Point.norm", "twice", "Point.x"],
+        )
+
+    def test_type_references_are_the_ones_after_the_colon(self):
+        """Names written only in binders are left out of `type_references`."""
+        declarations = self.parse(with_context=True)
+        self.assertEqual(
+            declarations["uses"]["type_references"],
+            ["Point.norm", "Eq", "Point.x", "HAdd.hAdd"],
+        )
+        self.assertEqual(declarations["twice"]["type_references"], [])
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -1,0 +1,348 @@
+[
+ {
+  "id": "notation-infix",
+  "files": {
+   "Pkg/File.lean": "def Pt : Type := Nat\ndef join (a b : Pt) : Pt := a\ninfixl:65 \" ⊔' \" => join\ntheorem join_self (a : Pt) : a ⊔' a = a := rfl\ntheorem join_assoc (a b c : Pt) : a ⊔' b ⊔' c = a ⊔' (b ⊔' c) := rfl\n"
+  },
+  "known": [
+   "Nat"
+  ],
+  "expected": {
+   "join_self": [
+    "Pt",
+    "join"
+   ],
+   "join_assoc": [
+    "Pt",
+    "join"
+   ]
+  },
+  "why": "An infix notation stands for the constant after `=>`; nothing in the signature names `join`."
+ },
+ {
+  "id": "notation-prefix-postfix-and-infix-share-a-token",
+  "files": {
+   "Pkg/File.lean": "def Pt : Type := Nat\ndef turn (a : Pt) : Pt := a\ndef minus (a b : Pt) : Pt := a\ndef mark (a : Pt) : Pt := a\nprefix:max \"∼\" => turn\ninfixl:65 \" ∼ \" => minus\npostfix:max \"†\" => mark\ntheorem neg (a : Pt) : ∼a = a := rfl\ntheorem sub (a b : Pt) : a ∼ b = a := rfl\ntheorem mixed (a b : Pt) : a† ∼ ∼b = a := rfl\n"
+  },
+  "known": [],
+  "expected": {
+   "neg": [
+    "Pt",
+    "turn"
+   ],
+   "sub": [
+    "Pt",
+    "minus"
+   ],
+   "mixed": [
+    "Pt",
+    "mark",
+    "minus",
+    "turn"
+   ]
+  },
+  "why": "`∼` is a prefix for `turn` and an infix for `minus`, as `-` is for `Neg.neg` and `HSub.hSub`: where a term starts it is the prefix, after a term the infix. A postfix ends a term."
+ },
+ {
+  "id": "notation-mixfix-with-holes",
+  "files": {
+   "Pkg/File.lean": "def Pt : Type := Nat\ndef pair (a b : Pt) : Pt := a\ndef weight (a : Pt) : Pt := a\ndef size (a : Pt) : Pt := a\nnotation \"⟪\" a \", \" b \"⟫\" => pair a b\nnotation \"‖\" a \"‖\" => weight a\nnotation \"‖\" a \"‖₊\" => size a\ntheorem pairs (a b : Pt) : ⟪a, b⟫ = a := rfl\ntheorem sizes (a : Pt) : ‖a‖₊ = ‖a‖ := rfl\ntheorem nested (a b : Pt) : ‖⟪a, ‖b‖₊⟫‖ = a := rfl\n"
+  },
+  "known": [],
+  "expected": {
+   "pairs": [
+    "Pt",
+    "pair"
+   ],
+   "sizes": [
+    "Pt",
+    "size",
+    "weight"
+   ],
+   "nested": [
+    "Pt",
+    "pair",
+    "size",
+    "weight"
+   ]
+  },
+  "why": "A notation with several atoms is found by its first atom. `‖a‖` and `‖a‖₊` start with the same atom and are told apart by the next one, `‖₊` being read whole as Lean's tokenizer does."
+ },
+ {
+  "id": "notation-identifier-tokens",
+  "files": {
+   "Pkg/File.lean": "def Real' : Type := Nat\ndef NNReal' : Type := Nat\nnotation \"ℝ'\" => Real'\nnotation \"ℝ'≥0\" => NNReal'\ntheorem reals (a : ℝ') : a = a := rfl\ntheorem longer (a : ℝ'≥0) (b : ℝ') : a = a := rfl\n"
+  },
+  "known": [],
+  "expected": {
+   "reals": [
+    "Real'"
+   ],
+   "longer": [
+    "NNReal'",
+    "Real'"
+   ]
+  },
+  "why": "A notation's atom can look like an identifier (`ℝ`), and a longer atom that starts with it (`ℝ≥0`) wins."
+ },
+ {
+  "id": "notation-expansion-uses-notation",
+  "files": {
+   "Pkg/File.lean": "def Pt : Type := Nat\ndef In (a b : Pt) : Prop := True\ndef No (p : Prop) : Prop := p → False\ninfix:50 \" ∈' \" => In\nnotation:max \"¬'\" p:40 => No p\nnotation:50 a:50 \" ∉' \" b:50 => ¬' (a ∈' b)\ntheorem avoids (a b : Pt) (h : a ∉' b) : a ∉' b := h\n"
+  },
+  "known": [],
+  "expected": {
+   "avoids": [
+    "In",
+    "No",
+    "Pt"
+   ]
+  },
+  "why": "The expansion of `∉'` is written with two other notations, as core's `a ∉ b => ¬ (a ∈ b)` is; its constants are theirs."
+ },
+ {
+  "id": "notation-scoped",
+  "files": {
+   "Pkg/File.lean": "def π : Nat := 3\nnamespace Geo\ndef pi : Nat := 4\nscoped notation \"π\" => pi\ntheorem inside : π = 4 := rfl\nend Geo\ntheorem outside : π = 3 := rfl\nsection\nopen Geo\ntheorem opened : π = pi := rfl\nend\nsection\nopen scoped Geo\ntheorem scopedOnly : π = Geo.pi := rfl\nend\nopen scoped Geo in\ntheorem once : π = 4 := rfl\n"
+  },
+  "known": [],
+  "expected": {
+   "Geo.inside": [
+    "Geo.pi"
+   ],
+   "outside": [
+    "π"
+   ],
+   "opened": [
+    "Geo.pi"
+   ],
+   "scopedOnly": [
+    "Geo.pi"
+   ],
+   "once": [
+    "Geo.pi"
+   ]
+  },
+  "why": "A scoped notation is a token only where its namespace is entered or opened; elsewhere `π` is the root declaration. `open scoped` makes the notation usable without opening names."
+ },
+ {
+  "id": "notation-local",
+  "files": {
+   "Pkg/File.lean": "def cap : Nat := 8\ndef bound : Nat := 100\nsection\nlocal notation \"bound\" => cap\ntheorem inside : bound = 8 := rfl\nend\ntheorem outside : bound = 100 := rfl\nnamespace N\nlocal notation \"lim\" => cap\ntheorem named : lim + bound = 108 := rfl\nend N\n"
+  },
+  "known": [],
+  "expected": {
+   "inside": [
+    "cap"
+   ],
+   "outside": [
+    "bound"
+   ],
+   "N.named": [
+    "bound",
+    "cap"
+   ]
+  },
+  "why": "A local notation ends with its section or namespace; after it the token is an identifier again."
+ },
+ {
+  "id": "notation-from-another-file",
+  "files": {
+   "Pkg/Ops.lean": "def star (a : Nat) : Nat := a\ndef dagger : Nat := 0\nprefix:max \"⋆\" => star\nnotation \"𝔡\" => dagger\n",
+   "Pkg/Uses.lean": "import Pkg.Ops\ntheorem uses (a : Nat) : ⋆a = 𝔡 + a := by simp [star, dagger]\n",
+   "Pkg/Apart.lean": "def 𝔡 : Nat := 1\ntheorem apart : 𝔡 = 1 := rfl\n"
+  },
+  "known": [],
+  "expected": {
+   "uses": [
+    "dagger",
+    "star"
+   ],
+   "apart": [
+    "𝔡"
+   ]
+  },
+  "why": "A notation reaches the modules that import the one declaring it. In a module that does not, `𝔡` is that module's own declaration."
+ },
+ {
+  "id": "notation-binder-macro",
+  "files": {
+   "Pkg/File.lean": "def total (f : Nat → Nat) : Nat := f 0\ndef i : Nat := 5\ndef c : Nat := 7\nmacro \"∑' \" x:ident \", \" b:term:67 : term => `(total (fun $x => $b))\ntheorem sums : ∑' k, c = c := rfl\ntheorem shadows : ∑' i, i = 0 := rfl\n"
+  },
+  "known": [],
+  "expected": {
+   "sums": [
+    "c",
+    "total"
+   ],
+   "shadows": [
+    "total"
+   ]
+  },
+  "why": "A macro's expansion is its syntax quotation. The name after `∑'` is bound by the `fun` of the expansion, so `i` in the body is not the declaration `i`."
+ },
+ {
+  "id": "notation-syntax-with-macro-rules",
+  "files": {
+   "Pkg/File.lean": "def Pt : Type := Nat\ndef le' (a b : Pt) : Prop := True\nsyntax:50 term:51 \" ≼ \" term:51 : term\nmacro_rules | `($a ≼ $b) => `(le' $a $b)\ntheorem below (a : Pt) : a ≼ a := trivial\n"
+  },
+  "known": [],
+  "expected": {
+   "below": [
+    "Pt",
+    "le'"
+   ]
+  },
+  "why": "Syntax declared with `syntax` and expanded by `macro_rules` is a notation whose constants are those of the quotation on the right."
+ },
+ {
+  "id": "notation-overloaded-token",
+  "files": {
+   "Pkg/File.lean": "structure P where\n  n : Nat\nstructure Q where\n  n : Nat\ndef A.tensor (a b : P) : P := a\ndef B.tensor (a b : Q) : Q := a\nnamespace A\nscoped infixl:70 \" ⊗ \" => A.tensor\nend A\nnamespace B\nscoped infixl:70 \" ⊗ \" => B.tensor\nend B\nsection\nopen scoped A\ntheorem one (a : P) : a ⊗ a = a := rfl\nend\nopen scoped A B\ntheorem both (a : Q) : a ⊗ a = a := rfl\n"
+  },
+  "known": [],
+  "expected": {
+   "one": [
+    "A.tensor",
+    "P"
+   ],
+   "both": [
+    "B.tensor",
+    "Q"
+   ]
+  },
+  "why": "With both namespaces open `⊗` has two notations and Lean chooses by the type of `a`. Source extraction records only what all candidates share, which is nothing here."
+ },
+ {
+  "id": "field-method-on-binder",
+  "files": {
+   "Pkg/File.lean": "structure Point where\n  x : Nat\n  y : Nat\ndef Point.norm (p : Point) : Nat := p.x\ndef Point.flip (p : Point) : Point := p\ndef Point.shift (p : Point) (n : Nat) : Point := p\ntheorem direct (p : Point) : p.norm = p.norm := rfl\ntheorem chained (p : Point) : p.flip.flip.norm = p.norm := rfl\ntheorem applied (p : Point) : (p.shift 1).norm = p.flip.norm := rfl\ntheorem quantified : ∀ p : Point, ∃ q : Point, p.norm = q.flip.norm := fun p => ⟨p, rfl⟩\n"
+  },
+  "known": [],
+  "expected": {
+   "direct": [
+    "Point",
+    "Point.norm"
+   ],
+   "chained": [
+    "Point",
+    "Point.flip",
+    "Point.norm"
+   ],
+   "applied": [
+    "Point",
+    "Point.flip",
+    "Point.norm",
+    "Point.shift"
+   ],
+   "quantified": [
+    "Point",
+    "Point.flip",
+    "Point.norm"
+   ]
+  },
+  "why": "`p.norm` with `p : Point` is `Point.norm p`. The type of `p.flip` is read from the signature of `Point.flip`, so a chain is followed, also through a parenthesised application."
+ },
+ {
+  "id": "field-receiver-is-a-section-variable",
+  "files": {
+   "Pkg/File.lean": "structure Point where\n  x : Nat\n  y : Nat\ndef Point.norm (p : Point) : Nat := p.x\ndef Point.flip (p : Point) : Point := p\ndef Point.shift (p : Point) (n : Nat) : Point := p\nsection\nvariable (p : Point) {q : Point}\ntheorem uses : p.norm = q.flip.flip.norm → True := fun _ => trivial\nend\nnamespace S\nvariable (r : Point)\ntheorem inner : r.flip.norm = r.norm := rfl\nend S\n"
+  },
+  "known": [],
+  "expected": {
+   "uses": [
+    "Point",
+    "Point.flip",
+    "Point.norm"
+   ],
+   "S.inner": [
+    "Point",
+    "Point.flip",
+    "Point.norm"
+   ]
+  },
+  "why": "The receiver can be a section variable; its type is the one written in the `variable` command."
+ },
+ {
+  "id": "field-receiver-type-through-notation",
+  "files": {
+   "Pkg/File.lean": "def Arrow (A B : Type) : Type := A → B\ninfixr:26 \" ⇒ \" => Arrow\ndef Arrow.dom {A B : Type} (f : A ⇒ B) : Type := A\ndef Arrow.andThen {A B C : Type} (f : A ⇒ B) (g : B ⇒ C) : A ⇒ C := fun a => g (f a)\ntheorem dom (f : Nat ⇒ Nat) : f.dom = Nat := rfl\ntheorem comp (f : Nat ⇒ Nat) : (f.andThen f).dom = ((f.andThen f).andThen f).dom := rfl\n"
+  },
+  "known": [
+   "Nat"
+  ],
+  "expected": {
+   "dom": [
+    "Arrow",
+    "Arrow.dom",
+    "Nat"
+   ],
+   "comp": [
+    "Arrow",
+    "Arrow.andThen",
+    "Arrow.dom",
+    "Nat"
+   ]
+  },
+  "why": "The type `Nat ⇒ Nat` is an application of `Arrow` only through the notation `⇒`; `f.dom` is `Arrow.dom f`."
+ },
+ {
+  "id": "field-inherited-through-extends",
+  "files": {
+   "Pkg/File.lean": "structure Point where\n  x : Nat\n  y : Nat\ndef Point.norm (p : Point) : Nat := p.x\ndef Point.flip (p : Point) : Point := p\ndef Point.shift (p : Point) (n : Nat) : Point := p\nstructure Colored extends Point where\n  hue : Nat\ntheorem inherited (c : Colored) : c.norm = c.flip.norm := rfl\n"
+  },
+  "known": [],
+  "expected": {
+   "inherited": [
+    "Colored",
+    "Colored.toPoint",
+    "Point.flip",
+    "Point.norm"
+   ]
+  },
+  "why": "`Colored` has no `norm`; it is found in the structure it extends. Lean goes through the parent projection `Colored.toPoint`, which is not stored."
+ },
+ {
+  "id": "field-local-wins-over-a-declaration-of-that-name",
+  "files": {
+   "Pkg/File.lean": "structure Point where\n  x : Nat\n  y : Nat\ndef Point.norm (p : Point) : Nat := p.x\ndef Point.flip (p : Point) : Point := p\ndef Point.shift (p : Point) (n : Nat) : Point := p\ndef norm : Nat := 0\ndef p.norm : Nat := 1\ndef twice (n : Nat) : Nat := n\ntheorem onBinder (p : Point) : p.norm = p.norm + norm := rfl\ntheorem onName : p.norm = 1 := rfl\ntheorem function (f : Nat → Nat) : f.comp twice = twice.comp f := rfl\n"
+  },
+  "known": [
+   "Function.comp"
+  ],
+  "expected": {
+   "onBinder": [
+    "Point",
+    "Point.norm",
+    "norm"
+   ],
+   "onName": [
+    "p.norm"
+   ],
+   "function": [
+    "Function.comp",
+    "twice"
+   ]
+  },
+  "why": "With a binder `p`, `p.norm` is a field of the local, not the declaration `p.norm`, and the root `norm` is unrelated. A function has the fields of `Function`."
+ },
+ {
+  "id": "field-unknown-receiver-type",
+  "files": {
+   "Pkg/File.lean": "structure Point where\n  x : Nat\n  y : Nat\ndef Point.norm (p : Point) : Nat := p.x\ndef Point.flip (p : Point) : Point := p\ndef Point.shift (p : Point) (n : Nat) : Point := p\ndef origin : Point := ⟨0, 0⟩\ndef Alias : Type := Point\ntheorem unwritten (p) (h : p = origin) : p.norm = origin.norm := by subst h; rfl\ntheorem throughAlias (p : Alias) : Point.norm p = Point.norm p := rfl\n"
+  },
+  "known": [],
+  "expected": {
+   "unwritten": [
+    "Point",
+    "Point.norm",
+    "origin"
+   ],
+   "throughAlias": [
+    "Alias",
+    "Point.norm"
+   ]
+  },
+  "why": "The type of `p` in `unwritten` is not written, so `p.norm` gives nothing, although Lean infers `Point`; `origin.norm` is still found from the signature of `origin`."
+ }
+]

@@ -27,6 +27,8 @@ pub struct Entry {
     pub is_private: bool,
     /// Whether the name cannot be reached by its last component alone.
     pub is_protected: bool,
+    /// The file and the index in it of the declaration, if its source is at hand.
+    pub source: Option<(u32, u32)>,
 }
 
 /// An open declaration bound to the namespace it opens.
@@ -122,7 +124,12 @@ impl<'t> NameTable<'t> {
     pub fn open_namespaces(&self, opened: &[Arc<OpenDeclaration>]) -> Vec<BoundOpen> {
         let mut bound: Vec<BoundOpen> = Vec::new();
         for declaration in opened {
-            let Some(written) = declaration.candidates.last() else {
+            // `open scoped A` opens no names.
+            let written = declaration
+                .candidates
+                .last()
+                .filter(|_| !declaration.is_scoped);
+            let Some(written) = written else {
                 continue;
             };
             let inside = bound
@@ -163,8 +170,20 @@ impl<'t> NameTable<'t> {
         is_visible.then_some(key)
     }
 
+    /// The table's copies of a namespace and of the namespaces around it, innermost
+    /// first, as far as they are known.
+    pub fn namespace(&self, name: &str) -> Vec<&'t str> {
+        let mut found = Vec::new();
+        let mut end = Some(name.len());
+        while let Some(length) = end {
+            found.extend(self.namespaces.get(&name[..length]).copied());
+            end = name[..length].rfind('.');
+        }
+        found
+    }
+
     /// Whether `module` imports `other`, directly or not.
-    fn sees(&self, module: u32, other: u32) -> bool {
+    pub fn sees(&self, module: u32, other: u32) -> bool {
         let Some(bits) = self.visible.get(module as usize) else {
             return true;
         };
@@ -278,13 +297,26 @@ impl<'t> NameTable<'t> {
     /// components, so `Foo.bar.baz` resolves to `Foo.bar` when `baz` is a field access.
     /// Returns `None` if nothing matches or several names match equally.
     pub fn resolve(&self, identifier: &str, place: &Use<'_, 't>) -> Option<&'t str> {
+        self.resolve_prefix(identifier, place).map(|(name, _)| name)
+    }
+
+    /// Like [`NameTable::resolve`], and also returns the components of the identifier
+    /// after the resolved name, which are field accesses: `baz` for `Foo.bar.baz`.
+    pub fn resolve_prefix<'i>(
+        &self,
+        identifier: &'i str,
+        place: &Use<'_, 't>,
+    ) -> Option<(&'t str, &'i str)> {
         if let Some(exact) = identifier.strip_prefix("_root_.") {
-            return self.visible_name(exact, place);
+            return self.visible_name(exact, place).map(|name| (name, ""));
         }
         let mut end = identifier.len();
         loop {
             match self.candidates(&identifier[..end], place) {
-                Found::One(name) => return Some(name),
+                Found::One(name) => {
+                    let fields = identifier[end..].strip_prefix('.').unwrap_or("");
+                    return Some((name, fields));
+                }
                 Found::Several => return None,
                 Found::Nothing => end = identifier[..end].rfind('.')?,
             }

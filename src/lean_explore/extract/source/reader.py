@@ -6,24 +6,27 @@ each declaration with the ranges Lean records for it. The rows match what the
 doc-gen4 path stores for the same declaration: the same line range, source
 text, docstring and source link format.
 
-The parser does not elaborate, so dependencies are the names written in each
-signature that resolve to a known declaration (the parser's ``refs`` module
-resolves them by Lean's lookup rules), anonymous instances are skipped because
-their names come from the elaborated type, and names that attributes such as
-``to_additive`` derive by rule are left out unless requested, because they are
-guesses.
+The parser does not elaborate, so dependencies are what each signature refers
+to as far as it is written down (the parser's ``refs`` module finds them): the
+identifiers that resolve to a known declaration by Lean's lookup rules, the
+constants that a notation declared in source stands for, and the fields
+accessed on a term whose type is written. Anonymous instances are skipped
+because their names come from the elaborated type, and names that attributes
+such as ``to_additive`` derive by rule are left out unless requested, because
+they are guesses.
 Install the parser with ``pip install ./src/lean_explore/parser/crates/lean-source-py``.
 """
 
 import importlib
 import logging
-from collections.abc import Callable, Collection
+from collections.abc import Callable, Collection, Sequence
 from pathlib import Path
 from types import ModuleType
 from typing import Any
 
 from lean_explore.extract.docgen.lean_source import select_source_lines
 from lean_explore.extract.packages.config import PackageConfig
+from lean_explore.extract.source.context import context_source_files
 from lean_explore.extract.source.fetch import read_commit, source_directory
 from lean_explore.extract.types import Declaration
 
@@ -214,6 +217,7 @@ def _read_rows(
     link_base: str,
     include_approximate: bool,
     known_names: Collection[str],
+    context_paths: Sequence[Path],
 ) -> dict[str, tuple[Declaration, list[str]]]:
     """Parse the files and build the stored rows by name, in file order.
 
@@ -224,6 +228,7 @@ def _read_rows(
         [str(path) for path in paths],
         root=str(source_root),
         text=True,
+        context_paths=[str(path) for path in context_paths],
         references=True,
         known_names=list(known_names),
         include_approximate=include_approximate,
@@ -246,7 +251,9 @@ def _set_dependencies(
     The parser resolves an identifier to whatever Lean would, including
     private declarations, structure fields and other names that are not
     stored. Such a name shadows the other candidates, so the identifier is
-    not a reference to any of them, and it is dropped here.
+    not a reference to any of them, and it is dropped here. The same holds
+    for what a notation or a field access stands for: ``a + b`` refers to
+    the class method ``HAdd.hAdd``, which is not a row.
     """
     stored = frozenset(known_names).union(rows)
     for name, (declaration, references) in rows.items():
@@ -264,6 +271,7 @@ def parse_package_sources(
     include_module: Callable[[str], bool],
     include_approximate: bool = False,
     known_names: Collection[str] = (),
+    context_paths: Sequence[Path] = (),
 ) -> list[Declaration]:
     """Parse a package checkout into declaration rows.
 
@@ -276,13 +284,21 @@ def parse_package_sources(
             guesses and can name declarations that do not exist.
         known_names: Names of declarations outside the package, such as those
             of its dependencies, that its signatures can refer to.
+        context_paths: Lean source files outside the package: those of Lean
+            itself and of the package's dependencies. The parser reads the
+            notations they declare (without them ``a + b`` refers to
+            nothing) and the declarations that fields are looked up in. A
+            file takes part in the modules that import it, so its path must
+            end with its module name, as ``.../Init/Core.lean`` does.
 
     Returns:
         One row per stored declaration name, in file order.
     """
     paths = package_files(source_root, include_module)
     known_names = frozenset(known_names)
-    rows = _read_rows(paths, source_root, link_base, include_approximate, known_names)
+    rows = _read_rows(
+        paths, source_root, link_base, include_approximate, known_names, context_paths
+    )
     _set_dependencies(rows, known_names)
     logger.info("Parsed %d source files into %d declarations", len(paths), len(rows))
     return [declaration for declaration, _ in rows.values()]
@@ -309,15 +325,21 @@ def extract_source_package(
         logger.warning("No sources found for %s at %s", package_config.name, directory)
         return []
     link_base = source_link_base(package_config.git_url, read_commit(directory))
+    context_paths = context_source_files(lean_root, package_config)
     subdirectory = package_config.source_subdirectory.strip("/")
     if subdirectory:
         # Modules are named from the subdirectory, links from the repository.
         directory = directory / subdirectory
         link_base = f"{link_base}{subdirectory}/"
-    logger.info("[%s] Parsing sources (no build)", package_config.name)
+    logger.info(
+        "[%s] Parsing sources (no build) with %d context files",
+        package_config.name,
+        len(context_paths),
+    )
     return parse_package_sources(
         directory,
         link_base,
         package_config.should_include_module,
         known_names=known_names,
+        context_paths=context_paths,
     )

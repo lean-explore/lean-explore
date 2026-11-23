@@ -3,10 +3,12 @@
 //! The parser reports a file's commands in order. This module replays the ones that change
 //! name resolution (`namespace`, `section`, `mutual`, `end`, `open`, `export`, `variable`,
 //! `include` and `omit`) and records the scope in effect at every command, so a declaration
-//! can be resolved with the namespaces that are open where it is written.
+//! can be resolved with the namespaces that are open where it is written. It also tells
+//! each notation of the file how far it reaches.
 
+use super::notation::{Atoms, Reach, Written};
 use super::tokens::{
-    Item, Token, colon_index, identifier_texts, instance_key, nest, plain_names, tokenize_with,
+    Item, Token, colon_index, identifier_texts, instance_key, nest, plain_names, tokenize_in,
 };
 use crate::scan::{CommandKind, Parsed};
 use std::sync::Arc;
@@ -22,6 +24,23 @@ pub struct OpenDeclaration {
     pub hidden: Vec<String>,
     /// Pairs `(new, old)` from `open A renaming old → new`.
     pub renamed: Vec<(String, String)>,
+    /// Whether this is `open scoped A`, which opens no names (`only` is empty) and only
+    /// makes the scoped notations of the namespace usable.
+    pub is_scoped: bool,
+}
+
+impl OpenDeclaration {
+    /// Whether the open makes the scoped notations of its namespace usable: every form
+    /// does except a selection `open A (x)` and `open A renaming x → y`.
+    pub fn activates(&self) -> bool {
+        self.is_scoped || (self.only.is_none() && self.renamed.is_empty())
+    }
+
+    /// Whether names of the namespace can be found through the open by their short names
+    /// in general, so that a later `open B` can mean a namespace inside it.
+    pub fn is_simple(&self) -> bool {
+        self.only.is_none() && self.renamed.is_empty()
+    }
 }
 
 /// One binder of a `variable` command.
@@ -59,6 +78,8 @@ struct Frame<'a> {
     variables: Vec<Arc<Variable<'a>>>,
     included: Vec<String>,
     omitted: Vec<String>,
+    /// Indexes of the local notations declared in the frame.
+    local_notations: Vec<usize>,
 }
 
 impl Frame<'_> {
@@ -149,17 +170,23 @@ fn namespace_candidates(written: &str, current: &str) -> Vec<String> {
 
 /// Reads the open declarations of an `open` or `export` command from the items after the
 /// keyword, such as `Set Filter in`. `current` is the namespace the command is in. There is
-/// one open declaration per namespace; `open scoped` opens no names.
+/// one open declaration per namespace; those of `open scoped` open no names.
 pub fn parse_open(arguments: &[Item<'_>], current: &str) -> Vec<OpenDeclaration> {
     let mut items = arguments;
     let mut words = identifier_texts(items);
-    if words.first().is_none_or(|word| *word == "scoped") {
-        return Vec::new();
-    }
     if words.last() == Some(&"in") {
         let last = items.iter().rposition(|item| item.is_word(&["in"]));
         items = &items[..last.unwrap_or(items.len())];
         words.pop();
+    }
+    if words.first() == Some(&"scoped") {
+        let scoped = |word: &&str| OpenDeclaration {
+            candidates: namespace_candidates(word, current),
+            only: Some(Vec::new()),
+            is_scoped: true,
+            ..Default::default()
+        };
+        return words[1..].iter().map(scoped).collect();
     }
     let Some(first) = words.first() else {
         return Vec::new();
@@ -227,6 +254,18 @@ struct Replay<'a, 's> {
 impl<'a> FileScopes<'a> {
     /// Replays the commands of `parsed` once and records the scope at each of them.
     pub fn new(src: &'a [u8], parsed: &Parsed) -> Self {
+        FileScopes::with_notations(src, parsed, &Atoms::default(), &mut [])
+    }
+
+    /// Like [`FileScopes::new`], reading the atoms of notations whole. `notations` are the
+    /// notations the file declares, in order: a local one is told where its section ends
+    /// and a scoped one which namespace it is declared in.
+    pub fn with_notations(
+        src: &'a [u8],
+        parsed: &Parsed,
+        atoms: &Atoms,
+        notations: &mut [Written],
+    ) -> Self {
         let mut scopes = FileScopes::default();
         let mut buffer = Vec::new();
         let mut replay = Replay {
@@ -235,10 +274,22 @@ impl<'a> FileScopes<'a> {
             current: None,
             out: &mut scopes,
         };
+        let mut next_notation = 0;
         for command in &parsed.commands {
             let scope = replay.snapshot();
             replay.out.starts.push(command.range.start);
             replay.out.at_command.push((command.namespace, scope));
+            while notations
+                .get(next_notation)
+                .is_some_and(|notation| notation.offset <= command.range.start)
+            {
+                let namespace = &parsed.namespaces[command.namespace as usize];
+                replay.declare(next_notation, &mut notations[next_notation], namespace);
+                next_notation += 1;
+            }
+            if command.kind == CommandKind::End {
+                replay.end_local_notations(command, src, notations);
+            }
             let changes_scope = matches!(
                 command.kind,
                 CommandKind::Open
@@ -254,7 +305,7 @@ impl<'a> FileScopes<'a> {
             );
             if changes_scope {
                 let text = super::slice(src, command.range);
-                let tokens = tokenize_with(text, &mut buffer);
+                let tokens = tokenize_in(text, &mut buffer, atoms);
                 let namespace = &parsed.namespaces[command.namespace as usize];
                 replay.apply(command.kind, tokens, text, namespace, command.range.start);
             } else {
@@ -291,6 +342,50 @@ impl<'a> Replay<'a, '_> {
         self.out.scopes.push(scope);
         self.current = Some(index);
         index
+    }
+
+    /// Records where a notation declared at the current command reaches.
+    fn declare(&mut self, index: usize, notation: &mut Written, namespace: &str) {
+        let is_bare = matches!(&notation.reach, Reach::Scoped(written) if written.is_empty());
+        if matches!(notation.reach, Reach::Local { .. }) {
+            let frame = self.frames.last_mut().unwrap();
+            frame.local_notations.push(index);
+        } else if is_bare && namespace.is_empty() {
+            // A `scoped` notation outside every namespace is an error in Lean.
+            notation.reach = Reach::Everywhere;
+        } else if is_bare {
+            notation.reach = Reach::Scoped(namespace.to_string());
+        }
+    }
+
+    /// Ends the local notations of the frames that an `end` command closes.
+    fn end_local_notations(
+        &mut self,
+        command: &crate::scan::Command,
+        src: &[u8],
+        notations: &mut [Written],
+    ) {
+        let text = super::slice(src, command.range);
+        let label = std::str::from_utf8(text).unwrap_or("");
+        let label = label.trim_start_matches("end").split_whitespace().next();
+        let closed = self.closed_frames(label.map_or(1, |word| word.split('.').count()));
+        let first = self.frames.len() - closed;
+        for frame in &self.frames[first..] {
+            for index in &frame.local_notations {
+                if let Reach::Local { end } = &mut notations[*index].reach {
+                    *end = command.range.start;
+                }
+            }
+        }
+    }
+
+    /// How many frames an `end` command with a label of `depth` components closes.
+    fn closed_frames(&self, depth: usize) -> usize {
+        let depth = match self.frames.last() {
+            Some(frame) if frame.is_mutual => 1,
+            _ => depth,
+        };
+        depth.min(self.frames.len() - 1)
     }
 
     fn clear_pending(&mut self) {
@@ -385,14 +480,11 @@ impl<'a> Replay<'a, '_> {
 
     /// Closes the frames that an `end` command ends.
     fn pop(&mut self, items: &[Item<'_>]) {
-        let mut depth = match identifier_texts(items).first() {
+        let depth = match identifier_texts(items).first() {
             Some(word) => word.split('.').count(),
             None => 1,
         };
-        if self.frames.last().is_some_and(|frame| frame.is_mutual) {
-            depth = 1;
-        }
-        for _ in 0..depth.min(self.frames.len() - 1) {
+        for _ in 0..self.closed_frames(depth) {
             self.frames.pop();
         }
     }
@@ -492,7 +584,21 @@ mod tests {
             written("open A (x y)"),
             [("A".to_string(), Some(strings(&["x", "y"])))]
         );
-        assert!(written("open scoped Topology").is_empty());
+        assert_eq!(
+            written("open scoped Topology"),
+            [("Topology".to_string(), Some(Vec::new()))]
+        );
+        let scoped = open("open scoped Topology Real in", "A");
+        assert_eq!(scoped.len(), 2);
+        assert!(
+            scoped
+                .iter()
+                .all(|opened| opened.is_scoped && opened.activates())
+        );
+        assert_eq!(scoped[0].only, Some(Vec::new()));
+        assert_eq!(scoped[1].candidates, ["A.Real", "Real"]);
+        assert!(open("open A", "")[0].activates());
+        assert!(!open("open A (x)", "")[0].activates());
         assert!(written("open").is_empty());
         assert!(written("open in").is_empty());
     }

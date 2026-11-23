@@ -49,11 +49,25 @@ decls = lsp.parse(text, file="FLT/Foo.lean", module="FLT.Foo", text=True)
 per_file = lsp.parse_files(paths, root="path/to/project")  # parallel, one project, releases the GIL
 commands = lsp.commands(text)
 with_references = lsp.parse_files(
-    paths, root="path/to/project", references=True, known_names=names_of_dependencies
+    paths,
+    root="path/to/project",
+    references=True,
+    known_names=names_of_dependencies,
+    context_paths=lean_files_of_the_toolchain_and_of_dependencies,
 )
 ```
 
-With `references=True` every declaration dict has `references`: the full names that the identifiers of its signature resolve to, in order of first appearance. Resolution follows Lean's lookup order (the declaration's namespaces, the root, `open` and `export` commands in effect, section variables with `include` and `omit`) and visibility (a name is visible after its declaration, inside its `mutual` block, or from a module that imports the one declaring it). Candidates are the declarations of `paths` and `known_names`. Nothing is elaborated: references through notation, field access on a term or instances are missing, and an identifier that Lean would resolve by type has none. The list includes names that only shadow others (private declarations, fields, constructors) and can include the declaration's own name, so a caller filters it down to the names it keeps. `include_approximate=True` lets names derived by a naming rule be referred to. On Mathlib (8,733 files, 96 threads) resolution adds about 0.6 s to parsing.
+With `references=True` every declaration dict has `references`: the full names that its signature refers to, in order of first appearance, and `type_references`: the ones of them written in the type after the signature's colon, leaving out names that occur only in binders or in the types of section variables. Nothing is elaborated. Three kinds of reference are found.
+
+- **Identifiers.** Resolution follows Lean's lookup order (the declaration's namespaces, the root, `open` and `export` commands in effect, section variables with `include` and `omit`) and visibility (a name is visible after its declaration, inside its `mutual` block, or from a module that imports the one declaring it). An identifier that Lean would resolve by type has no reference.
+- **Notation.** The commands `notation`, `notation3`, `infix`, `infixl`, `infixr`, `prefix` and `postfix` are read: their literal tokens, and the constants of the term after `=>`, resolved where the notation is declared. Of `macro_rules` and `macro` for terms, the syntax quotations on the right-hand side are the expansion; `syntax` and `elab` give a token whose meaning is code, so it stands for nothing known. A token written in a signature stands for the constants of the notations that are active there: a plain notation after its declaration and in modules that import it, a `local` one to the end of its section, a `scoped` one where its namespace is entered or opened (`open scoped` included). Tokens are read longest first, as Lean's tokenizer does (`ℝ≥0` before `ℝ`, `‖₊` before `‖`). Among several active notations for a token, the highest `priority` wins, a prefix is told from an infix by what comes before the token (`-x` against `a - b`), and notations with further tokens by the one that comes first (`‖x‖₊` against `‖x‖`). If several are still left, Lean would choose by type, and only the constants that all of them stand for are recorded.
+- **Fields.** For `x.f` and `x.f.g` where `x` is a binder or section variable whose type is written, the head constant `T` of that type is found, through notation if need be (`C ⥤ D` is `CategoryTheory.Functor`, a function type is `Function`), and the reference is `T.f` if that is declared, or the same in a structure that `T` extends. A chain goes on with the type that the signature of `T.f` returns. The same is done for a constant (`origin.x`), a parenthesised application (`(F.comp G).obj`) and a type ascription (`(s : Set α).Nonempty`). Nothing is guessed: no reference is recorded if the type is not written, is a local name, or needs unfolding.
+
+Candidates are the declarations of `paths`, of `context_paths` and `known_names`. `context_paths` are Lean source files outside the project: those of Lean itself (the toolchain's `src/lean`) and of the project's dependencies (for example `.lake/packages/*`). They are parsed but get no dicts. Core notation such as `+`, `=` and `∈` is declared there, in the same forms as any other notation, so without them `a + b` refers to nothing. A context file takes part in the modules that import it; an import is matched to a context file by the end of its path, so `import Init.Core` finds `.../src/lean/Init/Core.lean`, and every file imports `Init` unless it starts with `prelude`. A name in `known_names` is visible everywhere. Nothing is built for any of this.
+
+What stays missing is what only elaboration knows: instances, coercions, implicit arguments, numerals (`OfNat.ofNat`), anonymous constructors, leading-dot names, and the fields of terms whose type is not written. The list includes names that only shadow others (private declarations, fields, constructors) and names that are not top-level declarations (the class method `HAdd.hAdd` for `+`, the projection `CategoryTheory.Functor.obj`), and it can include the declaration's own name, so a caller filters it down to the names it keeps. `include_approximate=True` lets names derived by a naming rule be referred to.
+
+On Mathlib at 2ee37b8 (8,734 files, 258,108 stored declarations, 96 threads) with the toolchain and dependencies as context (3,393 files), 98.8% of the 1.70 million references are constants of the declaration's elaborated type as Lean reports it, and they are 36.8% of those constants; the rest are mostly instances and implicit arguments. Against the constants that doc-gen4 links in the rendered type, which leave out binders, the references written after the colon have 86.0% recall and 90.3% precision. Resolution adds about 0.8 s to parsing: 0.7 s for the package alone, and 0.15 s more with the context files.
 
 Rust:
 
@@ -64,9 +78,13 @@ for d in &parsed.decls {
 }
 
 // References of every declaration of a package, per file and per declaration.
-use lean_source::refs::{SourceFile, resolve_references};
+use lean_source::refs::{Project, SourceFile, resolve_references};
 let files = [SourceFile { module: "Pkg.Basic", source: source.as_bytes(), parsed: &parsed }];
 let references = resolve_references(&files, &known_names, false);
+// With the files of Lean and of dependencies for their notations and declarations; each
+// reference also tells whether it is written after the signature's colon.
+let project = Project::with_context(&files, &context_files, &known_names, false);
+let detailed = project.detailed_references();
 
 // A project: parse every file once, collect, then read again with the context.
 let mut ctx = lean_source::Context::default();
