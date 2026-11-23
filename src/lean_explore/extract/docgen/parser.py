@@ -4,6 +4,9 @@ This module orchestrates extraction: for every package workspace it detects
 the doc-gen4 output format, parses declarations (reading their Lean source
 text), filters auto-generated projections, and inserts the result.
 
+Packages configured with ``ExtractionMethod.SOURCE`` are read from their
+unbuilt sources instead (see :mod:`lean_explore.extract.source.reader`).
+
 Supports two doc-gen4 output formats:
 - SQLite database (api-docs.db): Used by doc-gen4 >= v4.29.0-rc2
   (see :mod:`lean_explore.extract.docgen.sqlite_reader`)
@@ -29,6 +32,8 @@ from lean_explore.extract.docgen.sqlite_reader import (
     validate_docgen_sqlite,
 )
 from lean_explore.extract.docgen.writer import insert_declarations_batch
+from lean_explore.extract.packages.config import ExtractionMethod
+from lean_explore.extract.source.reader import extract_source_package
 from lean_explore.extract.types import Declaration
 
 logger = logging.getLogger(__name__)
@@ -87,11 +92,13 @@ def _extract_package(lean_root: Path, package_name: str) -> list[Declaration]:
 
     Returns:
         The package's declarations, or an empty list if the workspace has no
-        doc-gen4 output.
+        doc-gen4 output (or, for a source package, no fetched sources).
     """
     from lean_explore.extract.packages.registry import PACKAGE_REGISTRY
 
     package_config = PACKAGE_REGISTRY[package_name]
+    if package_config.extraction is ExtractionMethod.SOURCE:
+        return extract_source_package(lean_root, package_config)
     workspace_path = lean_root / package_name
     docgen_format = _detect_docgen_format(workspace_path)
 

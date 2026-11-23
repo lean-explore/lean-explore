@@ -12,7 +12,7 @@ import subprocess
 import time
 from pathlib import Path
 
-from lean_explore.extract.packages.config import PackageConfig
+from lean_explore.extract.packages.config import ExtractionMethod, PackageConfig
 from lean_explore.extract.packages.github import extract_lean_version
 from lean_explore.extract.packages.registry import PACKAGE_REGISTRY
 from lean_explore.extract.packages.workspace import (
@@ -20,6 +20,7 @@ from lean_explore.extract.packages.workspace import (
     get_package_toolchain,
     update_lakefile_docgen_version,
 )
+from lean_explore.extract.source.fetch import fetch_package_sources
 
 logger = logging.getLogger(__name__)
 
@@ -346,6 +347,9 @@ async def run_doc_gen4(
 ) -> None:
     """Run doc-gen4 for each package to generate documentation data.
 
+    Packages configured with ``ExtractionMethod.SOURCE`` are not built: their
+    sources are fetched instead, for the build-free extraction path.
+
     Args:
         packages: List of package names to process. If None, processes all packages
             in dependency order.
@@ -368,7 +372,11 @@ async def run_doc_gen4(
             raise ValueError(f"Unknown package: {package_name}")
 
         logger.info("\n%s\nPackage: %s\n%s", "=" * 50, package_name, "=" * 50)
-        _prepare_package(PACKAGE_REGISTRY[package_name], setup, fresh)
+        config = PACKAGE_REGISTRY[package_name]
+        if config.extraction is ExtractionMethod.SOURCE:
+            fetch_package_sources(config, WORKSPACES_ROOT)
+            continue
+        _prepare_package(config, setup, fresh)
         _run_lake_for_package(package_name, verbose)
 
     logger.info("doc-gen4 generation complete for all packages")

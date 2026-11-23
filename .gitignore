@@ -36,3 +36,6 @@ temp/
 AGENTS.md
 CLAUDE.md
 dist/
+
+# Sources fetched for build-free extraction
+lean/*/source/
