@@ -1,8 +1,8 @@
 """Turn a package's Lean sources into declaration rows without building it.
 
 The build-free parser in ``src/lean_explore/parser/`` (Python module
-``lean_source_parser``) reads every source file of the package and reports each declaration with the
-ranges Lean records for it. The rows match what the doc-gen4 path stores for
+``lean_source_parser``) reads every source file of the package and reports
+each declaration with the ranges Lean records for it. The rows match what the doc-gen4 path stores for
 the same declaration: the same line range, source text, docstring and source
 link format.
 
