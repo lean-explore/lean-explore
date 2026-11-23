@@ -5,7 +5,7 @@
 Build it in a Lean workspace with compiled Mathlib dependencies. These commands were tested with Lean 4.32.0-rc1:
 
 ```sh
-lake env lean -R parser/validation -c /tmp/DumpSyntax.c parser/validation/DumpSyntax.lean
+lake env lean -R src/lean_explore/parser/validation -c /tmp/DumpSyntax.c src/lean_explore/parser/validation/DumpSyntax.lean
 lake env leanc -O3 -rdynamic -o /tmp/dump-syntax /tmp/DumpSyntax.c
 lake env /tmp/dump-syntax CORPUS_ROOT files.txt syntax.jsonl 4 imports.txt
 ```
@@ -13,7 +13,7 @@ lake env /tmp/dump-syntax CORPUS_ROOT files.txt syntax.jsonl 4 imports.txt
 `files.txt` contains one relative `.lean` path per line. `imports.txt` is optional and contains one compiled module name per line. The default import is `Mathlib`. With more than one worker, the output is split into `syntax.jsonl.0`, `syntax.jsonl.1`, etc. Each file ends with a summary record; incomplete output is rejected by the comparator. The `-rdynamic` linker option is needed for imported Lean parser extensions.
 
 ```sh
-python3 parser/validation/compare_syntax.py \
+python3 src/lean_explore/parser/validation/compare_syntax.py \
   --parsed declarations.jsonl --inventory files.txt --reference syntax.jsonl.* \
   --report-dir syntax-report --require-clean
 ```
@@ -30,7 +30,7 @@ Imports matter even when proofs are not elaborated. Importing the whole Mathlib 
 Run the comparison failure-gate tests with:
 
 ```sh
-python3 -m unittest discover -s parser/validation/tests -p test_compare_syntax.py
+python3 -m unittest discover -s src/lean_explore/parser/validation/tests -p test_compare_syntax.py
 ```
 
 `tests/OpenContext.lean` checks namespace operands and the distinction between scoped opens and explicit constant selections. Compile `DumpSyntax.lean` to an `.olean`, add its directory to `LEAN_PATH` within the same `lake env`, then run Lean on the test file.

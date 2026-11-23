@@ -6,11 +6,11 @@ on:
       - main
       - development
     paths:
-      - "parser/**"
+      - "src/lean_explore/parser/**"
       - ".github/workflows/parser.yml"
   pull_request:
     paths:
-      - "parser/**"
+      - "src/lean_explore/parser/**"
       - ".github/workflows/parser.yml"
 
 jobs:
@@ -18,7 +18,7 @@ jobs:
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: parser
+        working-directory: src/lean_explore/parser
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
