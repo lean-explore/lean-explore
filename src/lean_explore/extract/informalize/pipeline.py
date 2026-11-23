@@ -3,10 +3,12 @@
 Reads declarations from the database, generates informal descriptions using
 an LLM via OpenRouter, and updates the informalization field.
 
-Informalizations from previous extraction databases are reused first (keyed by
-declaration name and source text). The remaining declarations are processed in
-dependency order (see ``informalize_generation``), so each prompt can include
-the informal descriptions of the declaration's dependencies.
+Informalizations from previous extraction databases are reused first, keyed by
+declaration name and statement text (the source without the proof of a
+theorem), so a description survives a change to a proof. The remaining
+declarations are processed in dependency order (see
+``informalize_generation``), so each prompt can include the informal
+descriptions of the declaration's dependencies.
 """
 
 import asyncio
@@ -32,6 +34,7 @@ from lean_explore.extract.informalize.generation import (
     InformalizationRun,
     process_layers,
 )
+from lean_explore.extract.informalize.statement import statement_text
 from lean_explore.models import Declaration
 from lean_explore.util import OpenRouterClient
 
@@ -92,7 +95,9 @@ def _read_cached_informalizations(
         db_path: Path to a lean_explore.db file.
 
     Yields:
-        ((name, source_text), informalization) for each informalized declaration.
+        ((name, statement text), informalization) for each informalized
+        declaration. Keying on the statement lets a description survive a
+        change to the proof.
     """
     engine = create_engine(f"sqlite:///{db_path}")
     try:
@@ -104,7 +109,7 @@ def _read_cached_informalizations(
             ).where(Declaration.informalization.isnot(None))
             for name, source_text, informalization in session.execute(stmt):
                 if informalization is not None:
-                    yield (name, source_text), informalization
+                    yield (name, statement_text(source_text)), informalization
     finally:
         engine.dispose()
 
@@ -116,7 +121,7 @@ def _load_cache_from_databases(database_files: list[Path]) -> InformalizationCac
         database_files: List of database file paths to scan
 
     Returns:
-        Dictionary mapping (name, source_text) -> informalization
+        Dictionary mapping (name, statement text) -> informalization
     """
     return load_cache_from_databases(
         database_files, _read_cached_informalizations, "informalizations"
@@ -137,14 +142,14 @@ async def _apply_cache_to_declarations(
     Args:
         session: Async database session
         declarations: List of declarations to check against cache
-        cache: Map of (name, source_text) to cached informalizations
+        cache: Map of (name, statement text) to cached informalizations
         commit_batch_size: Number of updates to batch before committing
 
     Returns:
         Tuple of (cache_hits_count, list of declarations still needing API calls)
     """
     hits, remaining = split_cache_hits(
-        declarations, cache, key=lambda d: (d.name, d.source_text)
+        declarations, cache, key=lambda d: (d.name, statement_text(d.source_text))
     )
     logger.info(
         "Cache matching complete: %d hits, %d misses", len(hits), len(remaining)
@@ -184,7 +189,7 @@ async def _apply_cache_phase(
 
     Args:
         session: Async database session for the search database.
-        cache: Map of (name, source_text) to cached informalizations.
+        cache: Map of (name, statement text) to cached informalizations.
         limit: Maximum number of declarations to process (None for all).
         commit_batch_size: Number of updates to batch before committing.
 
@@ -226,7 +231,7 @@ async def _generate_phase(
     Args:
         session: Async database session for the search database.
         remaining: Declarations that still need informalization.
-        cache: Map of (name, source_text) to cached informalizations.
+        cache: Map of (name, statement text) to cached informalizations.
         model: LLM model to use for generation.
         prompt_template: Prompt template string.
         max_concurrent: Maximum number of concurrent LLM API calls.
