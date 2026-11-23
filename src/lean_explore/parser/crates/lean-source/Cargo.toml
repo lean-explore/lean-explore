@@ -1,0 +1,19 @@
+[package]
+name = "lean-source"
+description = "Build-free Lean 4 source parser: declarations, spans and source metrics."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[lib]
+name = "lean_source"
+
+[dependencies]
+memchr = "2"
+
+[dev-dependencies]
+criterion = { version = "0.5", default-features = false, features = ["cargo_bench_support"] }
+
+[[bench]]
+name = "parse"
+harness = false
