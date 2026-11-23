@@ -6,7 +6,8 @@ each declaration with the ranges Lean records for it. The rows match what the
 doc-gen4 path stores for the same declaration: the same line range, source
 text, docstring and source link format.
 
-The parser does not elaborate, so the rows have no dependencies, anonymous
+The parser does not elaborate, so dependencies are the names written in each
+signature that resolve to a known declaration (see ``references``), anonymous
 instances are skipped because their names come from the elaborated type, and
 names that attributes such as ``to_additive`` derive by rule are left out
 unless requested, because they are guesses.
@@ -15,7 +16,7 @@ Install the parser with ``pip install ./src/lean_explore/parser/crates/lean-sour
 
 import importlib
 import logging
-from collections.abc import Callable
+from collections.abc import Callable, Collection
 from pathlib import Path
 from types import ModuleType
 from typing import Any
@@ -23,6 +24,7 @@ from typing import Any
 from lean_explore.extract.docgen.lean_source import select_source_lines
 from lean_explore.extract.packages.config import PackageConfig
 from lean_explore.extract.source.fetch import read_commit, source_directory
+from lean_explore.extract.source.references import FileScopes, Scope, find_references
 from lean_explore.extract.types import Declaration
 
 logger = logging.getLogger(__name__)
@@ -181,11 +183,37 @@ def _to_declaration(
     )
 
 
+def _file_rows(
+    parser: ModuleType,
+    path: Path,
+    file_declarations: list[dict[str, Any]],
+    link_base: str,
+    include_approximate: bool,
+) -> list[tuple[Declaration, str, Scope]]:
+    """Build the rows of one file, each with its signature and scope."""
+    with open(path, encoding="utf-8") as source_file:
+        lines = source_file.readlines()
+    # Byte offsets from the parser refer to the file as stored, so the scopes
+    # are computed from the undecoded newlines.
+    source = path.read_bytes().decode("utf-8")
+    scopes = FileScopes(source, parser.commands(source))
+    return [
+        (
+            _to_declaration(declaration, lines, str(path), link_base),
+            declaration.get("signature_text") or "",
+            scopes.at(declaration["range"][0]),
+        )
+        for declaration in file_declarations
+        if is_stored(declaration, include_approximate)
+    ]
+
+
 def parse_package_sources(
     source_root: Path,
     link_base: str,
     include_module: Callable[[str], bool],
     include_approximate: bool = False,
+    known_names: Collection[str] = (),
 ) -> list[Declaration]:
     """Parse a package checkout into declaration rows.
 
@@ -196,38 +224,44 @@ def parse_package_sources(
         include_approximate: Also keep names that a naming rule derived, such
             as ``to_additive`` translations without a written name. They are
             guesses and can name declarations that do not exist.
+        known_names: Names of declarations outside the package, such as those
+            of its dependencies, that its signatures can refer to.
 
     Returns:
         One row per stored declaration name, in file order.
     """
     paths = package_files(source_root, include_module)
-    parsed = load_parser().parse_files(
+    parser = load_parser()
+    parsed = parser.parse_files(
         [str(path) for path in paths], root=str(source_root), text=True
     )
-    declarations: dict[str, Declaration] = {}
+    rows: dict[str, tuple[Declaration, str, Scope]] = {}
     for path, file_declarations in zip(paths, parsed, strict=True):
-        with open(path, encoding="utf-8") as source_file:
-            lines = source_file.readlines()
-        for declaration in file_declarations:
-            name = declaration["name"]
-            if is_stored(declaration, include_approximate) and name not in declarations:
-                declarations[name] = _to_declaration(
-                    declaration, lines, str(path), link_base
-                )
-    logger.info(
-        "Parsed %d source files into %d declarations", len(paths), len(declarations)
-    )
-    return list(declarations.values())
+        for row in _file_rows(
+            parser, path, file_declarations, link_base, include_approximate
+        ):
+            rows.setdefault(row[0].name, row)
+    names = set(rows) | set(known_names)
+    for declaration, signature, scope in rows.values():
+        declaration.dependencies = find_references(
+            declaration.name, signature, scope, names
+        )
+    logger.info("Parsed %d source files into %d declarations", len(paths), len(rows))
+    return [declaration for declaration, _, _ in rows.values()]
 
 
 def extract_source_package(
-    lean_root: Path, package_config: PackageConfig
+    lean_root: Path,
+    package_config: PackageConfig,
+    known_names: Collection[str] = (),
 ) -> list[Declaration]:
     """Extract a source package from its checkout under ``lean_root``.
 
     Args:
         lean_root: Root directory containing the package workspaces.
         package_config: Configuration of the package.
+        known_names: Names of declarations extracted from other packages,
+            which this package's signatures can refer to.
 
     Returns:
         The package's declarations, or an empty list if it was not fetched.
@@ -239,5 +273,8 @@ def extract_source_package(
     link_base = source_link_base(package_config.git_url, read_commit(directory))
     logger.info("[%s] Parsing sources (no build)", package_config.name)
     return parse_package_sources(
-        directory, link_base, package_config.should_include_module
+        directory,
+        link_base,
+        package_config.should_include_module,
+        known_names=known_names,
     )

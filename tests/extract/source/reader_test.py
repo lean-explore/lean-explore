@@ -194,7 +194,7 @@ class TestSourceExtraction:
     async def test_extract_declarations(
         self, async_db_engine, temp_directory, monkeypatch
     ):
-        """A source package is parsed and stored without dependencies."""
+        """A source package is parsed and stored with its references."""
         source = make_repository(
             temp_directory / "lean" / "pkg" / "source", {"Pkg/A.lean": PKG_A}
         )
@@ -225,7 +225,12 @@ class TestSourceExtraction:
             "Pkg.addOne_zero",
             "Pkg.instReprPoint",
         ]
-        assert all(row.dependencies is None for row in stored)
+        assert {row.name: row.dependencies for row in stored} == {
+            "Pkg.Point": None,
+            "Pkg.addOne": None,
+            "Pkg.addOne_zero": '["Pkg.addOne"]',
+            "Pkg.instReprPoint": '["Pkg.Point"]',
+        }
         assert {row.source_link.split("#")[0] for row in stored} == {
             f"https://github.com/owner/pkg/blob/{commit}/Pkg/A.lean"
         }
