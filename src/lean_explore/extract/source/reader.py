@@ -2,9 +2,9 @@
 
 The build-free parser in ``src/lean_explore/parser/`` (Python module
 ``lean_source_parser``) reads every source file of the package and reports
-each declaration with the ranges Lean records for it. The rows match what the doc-gen4 path stores for
-the same declaration: the same line range, source text, docstring and source
-link format.
+each declaration with the ranges Lean records for it. The rows match what the
+doc-gen4 path stores for the same declaration: the same line range, source
+text, docstring and source link format.
 
 The parser does not elaborate, so the rows have no dependencies, anonymous
 instances are skipped because their names come from the elaborated type, and
