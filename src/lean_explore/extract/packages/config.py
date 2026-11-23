@@ -50,6 +50,13 @@ class PackageConfig:
     extraction: ExtractionMethod = ExtractionMethod.DOCGEN
     """Whether to read doc-gen4 output or parse the unbuilt sources."""
 
+    source_subdirectory: str = ""
+    """Directory of the repository that holds its modules, for source extraction.
+
+    Empty when the modules are at the repository root. Lean itself keeps
+    ``Init``, ``Std`` and ``Lean`` under ``src``.
+    """
+
     def should_include_module(self, module_name: str) -> bool:
         """Check if a module belongs to this package based on prefixes.
 

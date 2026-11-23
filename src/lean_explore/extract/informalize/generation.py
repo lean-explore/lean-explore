@@ -8,6 +8,8 @@ layer's results are made available to the next.
 import asyncio
 import logging
 from dataclasses import dataclass
+from functools import cache
+from pathlib import Path
 
 from rich.progress import Progress, TaskID
 from sqlalchemy import update
@@ -21,10 +23,13 @@ from lean_explore.util import OpenRouterClient
 logger = logging.getLogger(__name__)
 
 MAX_PROMPT_DEPENDENCIES = 20
-"""Only the first this-many dependencies are considered for prompt context."""
+"""At most this many dependencies are described in a prompt."""
 
 MAX_DEPENDENCY_DESCRIPTION_LENGTH = 256
 """Dependency descriptions longer than this are truncated with an ellipsis."""
+
+COMMON_DEPENDENCIES_PATH = Path(__file__).parent / "common_dependencies.txt"
+"""File listing dependencies that every prompt leaves out."""
 
 InformalizationCache = dict[tuple[str, str], str]
 """Map of (declaration name, source text) to a previously generated description."""
@@ -76,23 +81,45 @@ class DeclarationData:
 # --- Processing Functions ---
 
 
+@cache
+def common_dependencies() -> frozenset[str]:
+    """Return the dependency names that prompts leave out.
+
+    They are names such as ``Eq`` and ``HAdd.hAdd`` that occur in a large share
+    of statements and that a language model already knows.
+
+    Returns:
+        The names listed in ``common_dependencies.txt``.
+    """
+    lines = COMMON_DEPENDENCIES_PATH.read_text(encoding="utf-8").splitlines()
+    names = (line.strip() for line in lines)
+    return frozenset(name for name in names if name and not name.startswith("#"))
+
+
 def format_dependencies(
     dependencies: str | list[str] | None, informalizations_by_name: dict[str, str]
 ) -> str:
     """Format known dependency descriptions as prompt context.
+
+    Common dependencies and dependencies without a description are skipped;
+    the first MAX_PROMPT_DEPENDENCIES of the rest are listed.
 
     Args:
         dependencies: Dependency names as JSON string, list, or None.
         informalizations_by_name: Map of declaration names to informalizations.
 
     Returns:
-        "Dependencies:" followed by one line per described dependency, or ""
-        when none of the first MAX_PROMPT_DEPENDENCIES are described.
+        "Dependencies:" followed by one line per listed dependency, or "" when
+        there is none.
     """
+    skipped = common_dependencies()
+    described = [
+        name
+        for name in parse_dependencies(dependencies)
+        if name not in skipped and name in informalizations_by_name
+    ]
     lines = []
-    for name in parse_dependencies(dependencies)[:MAX_PROMPT_DEPENDENCIES]:
-        if name not in informalizations_by_name:
-            continue
+    for name in described[:MAX_PROMPT_DEPENDENCIES]:
         description = informalizations_by_name[name]
         if len(description) > MAX_DEPENDENCY_DESCRIPTION_LENGTH:
             description = description[: MAX_DEPENDENCY_DESCRIPTION_LENGTH - 3] + "..."

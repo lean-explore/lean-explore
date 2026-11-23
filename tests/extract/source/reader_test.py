@@ -276,6 +276,28 @@ class TestSourceExtraction:
         assert extract_source_package(tmp_path, config) == []
         assert "No sources found for pkg" in caplog.text
 
+    def test_modules_in_a_subdirectory(self, requires_parser, tmp_path):
+        """A package whose modules sit in a subdirectory is named from there."""
+        source = make_repository(
+            tmp_path / "pkg" / "source", {"src/Pkg/A.lean": PKG_A, "Top.lean": PKG_A}
+        )
+        config = PackageConfig(
+            name="pkg",
+            git_url="https://github.com/owner/pkg",
+            module_prefixes=["Pkg"],
+            extraction=ExtractionMethod.SOURCE,
+            source_subdirectory="src",
+        )
+
+        rows = extract_source_package(tmp_path, config)
+
+        commit = read_commit(source)
+        add_one = next(row for row in rows if row.name == "Pkg.addOne")
+        assert {row.module for row in rows} == {"Pkg.A"}
+        assert add_one.source_link.startswith(
+            f"https://github.com/owner/pkg/blob/{commit}/src/Pkg/A.lean#L"
+        )
+
     async def test_extract_declarations(
         self, async_db_engine, temp_directory, monkeypatch
     ):
