@@ -1,0 +1,468 @@
+[
+ {
+  "id": "protected-skipped-by-atomic-name",
+  "files": {
+   "Pkg/File.lean": "def size : Nat := 3\n\nnamespace Vec\n\nprotected def size : Nat := 5\n\ntheorem size_eq : size = 3 := rfl\n\nend Vec\n\ndef double (n : Nat) : Nat := 2 * n\n\nnamespace MyNat\nprotected def double (n : Nat) : Nat := n + n\nend MyNat\n\ntheorem MyNat.double_zero : double 0 = 0 := rfl\n"
+  },
+  "known": [],
+  "expected": {
+   "Vec.size_eq": [
+    "size"
+   ],
+   "MyNat.double_zero": [
+    "double"
+   ]
+  },
+  "why": "Lean never resolves an atomic identifier to a protected declaration through the current namespace (including the namespace implied by a dotted declaration name), so `size`/`double` mean the root constants; the extractor ignores the `protected` modifier and picks `Vec.size`/`MyNat.double`."
+ },
+ {
+  "id": "protected-skipped-via-open",
+  "files": {
+   "Pkg/File.lean": "namespace Shape\ndef size : Nat := 3\nend Shape\n\nnamespace Vec\nprotected def size : Nat := 5\nend Vec\n\nopen Shape Vec\n\ntheorem size_eq : size = 3 := rfl\n"
+  },
+  "known": [],
+  "expected": {
+   "size_eq": [
+    "Shape.size"
+   ]
+  },
+  "why": "`open Shape Vec` makes only non-protected members reachable by an atomic name, so `size` is `Shape.size`; the extractor tries the last-opened namespace first and returns the protected `Vec.size`."
+ },
+ {
+  "id": "root-prefixed-decl-uses-enclosing-namespace",
+  "files": {
+   "Pkg/File.lean": "def bound : Nat := 0\ndef Fin.bound : Nat := 1\n\nnamespace Graph\n\ndef bound : Nat := 10\n\ntheorem _root_.bound_pos : 0 < bound := by decide\n\ntheorem _root_.Fin.bound_pos : 0 < bound := by decide\n\nend Graph\n"
+  },
+  "known": [],
+  "expected": {
+   "bound_pos": [
+    "Graph.bound"
+   ],
+   "Fin.bound_pos": [
+    "Graph.bound"
+   ]
+  },
+  "why": "A `theorem _root_.X.y` inside `namespace Graph` is elaborated in `Graph` (not in `X`), so `bound` is `Graph.bound`; the extractor derives the scope from the final name and resolves to root `bound` or to `Fin.bound`."
+ },
+ {
+  "id": "constructor-not-in-inductive-namespace",
+  "files": {
+   "Pkg/File.lean": "def Label : Type := String\ndef Tree.Label : Type := Nat\n\ninductive Tree where\n  | leaf (l : Label) : Tree\n  | node (children : List Tree) : Tree\n"
+  },
+  "known": [],
+  "expected": {
+   "Tree.leaf": [
+    "Label",
+    "Tree"
+   ]
+  },
+  "why": "Constructor types are elaborated in the namespace enclosing the inductive, not in the inductive's own namespace, so `Label` is root `Label`; the extractor uses the constructor's name prefix `Tree` and picks `Tree.Label`."
+ },
+ {
+  "id": "own-name-not-visible-in-signature",
+  "files": {
+   "Pkg/File.lean": "def len : Nat := 3\n\nnamespace Buf\n\ndef len (i : Fin len) : Nat := i.val\n\nend Buf\n"
+  },
+  "known": [
+   "Nat"
+  ],
+  "expected": {
+   "Buf.len": [
+    "Nat",
+    "len"
+   ]
+  },
+  "why": "A declaration does not exist while its own signature is elaborated, so `len` in `Buf.len`'s binder is root `len`; the extractor resolves `len` to `Buf.len` itself and then drops it as a self-reference, losing `len` (the self case of known bug 2; a position-based fix must use a strict comparison)."
+ },
+ {
+  "id": "section-variable-types-included",
+  "files": {
+   "Pkg/File.lean": "class Good (α : Type) : Prop where\n  ok : True\n\nstructure Box where\n  val : Nat\n\nsection\nvariable {α : Type} [Good α] (b : Box)\n\ntheorem box_refl (a : α) : b = b := rfl\n\nend\n"
+  },
+  "known": [],
+  "expected": {
+   "box_refl": [
+    "Box",
+    "Good"
+   ]
+  },
+  "why": "Section variables that a theorem mentions (and instance-implicit variables whose dependencies are mentioned) become binders of its type, so `Good` and `Box` appear; the extractor only reads the declaration's own signature."
+ },
+ {
+  "id": "section-variable-include",
+  "files": {
+   "Pkg/File.lean": "class Good (α : Type) : Prop where\n  ok : True\n\nsection\nvariable {α : Type} (h : Good α)\ninclude h\n\ntheorem uses_h (a : α) : a = a := rfl\n\nend\n"
+  },
+  "known": [],
+  "expected": {
+   "uses_h": [
+    "Good"
+   ]
+  },
+  "why": "`include h` adds the variable `h : Good α` to every following theorem even if unmentioned, so `Good` is in the type; the extractor ignores `include`."
+ },
+ {
+  "id": "section-variable-instance-without-dependencies",
+  "files": {
+   "Pkg/File.lean": "class Flag : Prop where\n  on : True\n\nsection\nvariable [Flag]\n\ntheorem flagged (n : Nat) : n = n := rfl\n\nend\n"
+  },
+  "known": [],
+  "expected": {
+   "flagged": [
+    "Flag"
+   ]
+  },
+  "why": "An instance-implicit section variable with no free variables (`[Flag]`) is included in every theorem of the section, so `Flag` is in the type although the statement never mentions it."
+ },
+ {
+  "id": "section-variable-used-in-def-body",
+  "files": {
+   "Pkg/File.lean": "structure Box where\n  val : Nat\n\nsection\nvariable (b : Box)\n\ndef contents : Nat := b.val\n\nend\n"
+  },
+  "known": [],
+  "expected": {
+   "contents": [
+    "Box"
+   ]
+  },
+  "why": "For a `def` (unlike a theorem) section variables used in the body are also included, so `contents : Box → Nat`; nothing in the signature reveals `Box`."
+ },
+ {
+  "id": "section-variable-type-resolved-at-use-site",
+  "files": {
+   "Pkg/File.lean": "structure Box where\n  val : Nat\n\nnamespace Store\nstructure Box where\n  items : List Nat\nend Store\n\nsection\nvariable (b : Box)\n\ntheorem top_box : b = b := rfl\n\nnamespace Store\ntheorem store_box : b = b := rfl\nend Store\n\nend\n"
+  },
+  "known": [],
+  "expected": {
+   "top_box": [
+    "Box"
+   ],
+   "Store.store_box": [
+    "Store.Box"
+   ]
+  },
+  "why": "Variable binder types are re-elaborated in each declaration's own scope, so the same `variable (b : Box)` gives `Box` at top level but `Store.Box` inside `namespace Store`; a fix must resolve variable types at the use site, not at the `variable` command."
+ },
+ {
+  "id": "binder-predicate-domain-is-not-bound",
+  "files": {
+   "Pkg/File.lean": "def evens : List Nat := [0, 2, 4]\n\ntheorem all_even : ∀ x ∈ evens, x % 2 = 0 := by decide\n\ndef limit : Nat := 4\n\ntheorem exists_small : ∃ n < limit, n = 0 := ⟨0, by decide, rfl⟩\n"
+  },
+  "known": [],
+  "expected": {
+   "all_even": [
+    "evens"
+   ],
+   "exists_small": [
+    "limit"
+   ]
+  },
+  "why": "In `∀ x ∈ evens, …` and `∃ n < limit, …` only `x`/`n` are bound; the keyword-binder regex captures everything up to the comma and treats `evens` and `limit` as local names."
+ },
+ {
+  "id": "variable-binder-predicate-leaks-section-wide",
+  "files": {
+   "Pkg/File.lean": "def evens : List Nat := [0, 2, 4]\n\nsection\nvariable (h : ∀ x ∈ evens, x % 2 = 0)\n\ntheorem evens_length : evens.length = 3 := rfl\n\nend\n"
+  },
+  "known": [],
+  "expected": {
+   "evens_length": [
+    "evens"
+   ]
+  },
+  "why": "The same over-capture inside a `variable` command marks `evens` as a section variable, so every later declaration in the section loses its references to the constant `evens`."
+ },
+ {
+  "id": "assignment-labels-are-not-references",
+  "files": {
+   "Pkg/File.lean": "def size : Nat := 3\n\ndef mkBuf (size : Nat := 8) : List Nat := List.replicate size 0\n\ntheorem mkBuf_two : mkBuf (size := 2) = [0, 0] := rfl\n\ndef width : Nat := 0\n\nstructure Canvas where\n  width : Nat\n  height : Nat\n\ndef unit : Canvas := { width := 1, height := 1 }\n\ntheorem unit_eq : unit = { width := 1, height := 1 : Canvas } := rfl\n"
+  },
+  "known": [],
+  "expected": {
+   "mkBuf_two": [
+    "mkBuf"
+   ],
+   "unit_eq": [
+    "Canvas",
+    "unit"
+   ]
+  },
+  "why": "In a named argument `(size := 2)` and a structure instance `{ width := 1, … }` the name before `:=` is a parameter/field label, not a term; the extractor resolves the labels to the unrelated root constants `size` and `width`."
+ },
+ {
+  "id": "universe-name-is-not-a-constant",
+  "files": {
+   "Pkg/File.lean": "namespace Graph\n\ndef u : Nat := 0\n\nuniverse u\n\ndef Edge (α : Type u) : Type u := α × α\n\nend Graph\n"
+  },
+  "known": [],
+  "expected": {
+   "Graph.Edge": []
+  },
+  "why": "`u` in `Type u` is a universe level introduced by `universe u`, not a term; the extractor resolves it to the constant `Graph.u`."
+ },
+ {
+  "id": "namespace-dotted-closed-in-two-steps",
+  "files": {
+   "Pkg/File.lean": "namespace Lib\ndef width : Nat := 1\nend Lib\n\nsection Outer\nopen Lib\n\nnamespace A.B\ndef inner : Nat := 0\nend B\nend A\n\ntheorem width_eq : width = 1 := rfl\n\nend Outer\n"
+  },
+  "known": [],
+  "expected": {
+   "width_eq": [
+    "Lib.width"
+   ]
+  },
+  "why": "`namespace A.B` opens two scopes that may be closed by `end B` then `end A`; the extractor pushes one frame and pops two, so `end A` closes `section Outer` and its `open Lib` is lost (converse of known bug 3)."
+ },
+ {
+  "id": "open-in-chain",
+  "files": {
+   "Pkg/File.lean": "namespace P\ndef p : Nat := 1\nend P\n\nnamespace Q\ndef q : Nat := 2\nend Q\n\nopen P in\nopen Q in\ntheorem pq : p + 1 = q := rfl\n"
+  },
+  "known": [],
+  "expected": {
+   "pq": [
+    "P.p",
+    "Q.q"
+   ]
+  },
+  "why": "`open P in open Q in theorem …` opens both namespaces for the theorem; the second `open … in` replaces the pending one-command list instead of extending it, so `P.p` is lost (same mechanism as known bug 4, but with two `open … in` and no `set_option`)."
+ },
+ {
+  "id": "extends-clause-not-in-type",
+  "files": {
+   "Pkg/File.lean": "structure Base where\n  x : Nat\n\nstructure Point extends Base where\n  y : Nat\n\nclass Named (α : Type) where\n  name : String\n\nclass Labeled (α : Type) extends Named α where\n  label : String\n"
+  },
+  "known": [],
+  "expected": {
+   "Point": [],
+   "Labeled": []
+  },
+  "why": "A structure's or class's type is just its parameters to `Type`, so parents named in `extends` are not in it; the parser keeps `extends Base` in the signature and the extractor reports the parent."
+ },
+ {
+  "id": "field-projection-shadows-root",
+  "files": {
+   "Pkg/File.lean": "def width : Nat := 0\n\nstructure Canvas where\n  width : Nat\n  height : Nat\n\nnamespace Canvas\n\ntheorem width_le (c : Canvas) : width c ≤ width c + height c := Nat.le_add_right _ _\n\nend Canvas\n"
+  },
+  "known": [],
+  "expected": {
+   "Canvas.width_le": [
+    "Canvas",
+    "Canvas.height",
+    "Canvas.width"
+   ]
+  },
+  "why": "Inside `namespace Canvas`, `width`/`height` are the structure projections `Canvas.width`/`Canvas.height`; fields are not stored, so they are absent from the lookup set and `width` falls through to the unrelated root `width` (like known bug 9, but for fields)."
+ },
+ {
+  "id": "alias-type-is-target-type",
+  "files": {
+   "Pkg/File.lean": "macro \"alias \" n:ident \" := \" t:ident : command => `(theorem $n : type_of% @$t := @$t)\n\ndef Even' (n : Nat) : Prop := n % 2 = 0\n\ntheorem even_zero : Even' 0 := rfl\n\nalias zero_even := even_zero\n"
+  },
+  "known": [],
+  "expected": {
+   "zero_even": [
+    "Even'"
+   ]
+  },
+  "why": "An alias has its target's type, so `zero_even : Even' 0` references `Even'`, not `even_zero`; the extractor reads `:= even_zero` as the signature. The file defines a stand-in `alias` macro with Batteries' semantics because core Lean has no `alias`."
+ },
+ {
+  "id": "local-notation-token-shadows-constant",
+  "files": {
+   "Pkg/File.lean": "def bound : Nat := 100\n\nnamespace Vec\n\ndef cap : Nat := 8\n\nlocal notation \"bound\" => cap\n\ntheorem bound_eq : bound = 8 := rfl\n\nend Vec\n"
+  },
+  "known": [],
+  "expected": {
+   "Vec.bound_eq": [
+    "Vec.cap"
+   ]
+  },
+  "why": "After `local notation \"bound\" => cap`, `bound` is a token that expands to `Vec.cap`; the extractor still reads it as an identifier and reports the unrelated root `bound` (a false positive, not just the known notation miss)."
+ },
+ {
+  "id": "custom-structure-constructor-signature",
+  "files": {
+   "Pkg/File.lean": "structure Size where\n  val : Nat\n\nstructure Cfg where\n  mkCfg ::\n  width : Size\n"
+  },
+  "known": [],
+  "expected": {
+   "Cfg.mkCfg": [
+    "Cfg",
+    "Size"
+   ]
+  },
+  "why": "A structure with `mkCfg ::` stores the constructor `Cfg.mkCfg : Size → Cfg`, but its parsed signature is just `mkCfg ::`, so the field types and the structure itself are missed (outside the namespace focus, found in passing)."
+ },
+ {
+  "id": "reg-namespace-beats-root",
+  "files": {
+   "Pkg/File.lean": "def size : Nat := 3\n\nnamespace Vec\n\ndef size : Nat := 5\n\ntheorem size_eq : size = 5 := rfl\n\nend Vec\n"
+  },
+  "known": [],
+  "expected": {
+   "Vec.size_eq": [
+    "Vec.size"
+   ]
+  },
+  "why": "The current namespace is searched before the root namespace: `size` inside `namespace Vec` is `Vec.size` when it is not protected."
+ },
+ {
+  "id": "reg-namespace-beats-open",
+  "files": {
+   "Pkg/File.lean": "namespace Shape\ndef size : Nat := 3\nend Shape\n\nnamespace Vec\nopen Shape\ndef size : Nat := 5\ntheorem size_eq : size = 5 := rfl\nend Vec\n"
+  },
+  "known": [],
+  "expected": {
+   "Vec.size_eq": [
+    "Vec.size"
+   ]
+  },
+  "why": "A match in the current namespace wins over an opened namespace without ambiguity."
+ },
+ {
+  "id": "reg-parent-namespace-beats-open",
+  "files": {
+   "Pkg/File.lean": "namespace P\ndef x : Nat := 1\nend P\n\ndef A.x : Nat := 2\n\nopen P\n\nnamespace A.B\ntheorem x_eq : x = 2 := rfl\nend A.B\n"
+  },
+  "known": [],
+  "expected": {
+   "A.B.x_eq": [
+    "A.x"
+   ]
+  },
+  "why": "Every enclosing namespace (here `A`, from `namespace A.B`) is searched before opened namespaces."
+ },
+ {
+  "id": "reg-protected-qualified-access",
+  "files": {
+   "Pkg/File.lean": "def size : Nat := 3\n\nnamespace Geo\n\nprotected def Vec.size : Nat := 5\n\ntheorem vec_size : Vec.size = 5 := rfl\n\nend Geo\n\nopen Geo in\ntheorem vec_size' : Vec.size = 5 := rfl\n"
+  },
+  "known": [],
+  "expected": {
+   "Geo.vec_size": [
+    "Geo.Vec.size"
+   ],
+   "vec_size'": [
+    "Geo.Vec.size"
+   ]
+  },
+  "why": "Protected names are still reachable through a non-atomic identifier (`Vec.size`), both via the current namespace and via an opened one; a fix for the protected rule must apply only to atomic identifiers."
+ },
+ {
+  "id": "reg-dotted-decl-name-opens-all-prefixes",
+  "files": {
+   "Pkg/File.lean": "def A.x : Nat := 2\ndef x : Nat := 0\n\ntheorem A.B.c : x = 2 := rfl\n"
+  },
+  "known": [],
+  "expected": {
+   "A.B.c": [
+    "A.x"
+   ]
+  },
+  "why": "`theorem A.B.c` at top level is elaborated inside `namespace A.B`, so `x` is `A.x`."
+ },
+ {
+  "id": "reg-open-in-docstring-attribute",
+  "files": {
+   "Pkg/File.lean": "namespace P\ndef q : Nat := 1\nend P\n\nopen P in\n/-- docstring -/\n@[simp] theorem with_open : q = 1 := rfl\n"
+  },
+  "known": [],
+  "expected": {
+   "with_open": [
+    "P.q"
+   ]
+  },
+  "why": "`open P in` still applies when the next declaration starts with a docstring and an attribute."
+ },
+ {
+  "id": "reg-variable-shadows-constant",
+  "files": {
+   "Pkg/File.lean": "def size : Nat := 3\n\nsection\nvariable (size : Nat)\n\ntheorem size_self : size = size := rfl\n\nend\n\ntheorem size_const : size = 3 := rfl\n"
+  },
+  "known": [],
+  "expected": {
+   "size_self": [],
+   "size_const": [
+    "size"
+   ]
+  },
+  "why": "A section variable shadows a constant of the same name until the section ends."
+ },
+ {
+  "id": "reg-variable-not-mentioned-not-included",
+  "files": {
+   "Pkg/File.lean": "structure Box where\n  val : Nat\n\nsection\nvariable (b : Box)\n\ntheorem unrelated (n : Nat) : n = n := rfl\n\nend\n"
+  },
+  "known": [
+   "Nat"
+  ],
+  "expected": {
+   "unrelated": [
+    "Nat"
+   ]
+  },
+  "why": "A section variable the theorem does not mention is not part of its type; a fix that adds variable types must respect inclusion."
+ },
+ {
+  "id": "reg-variable-shadowed-by-own-binder",
+  "files": {
+   "Pkg/File.lean": "structure Box where\n  val : Nat\n\nsection\nvariable (b : Box)\n\ntheorem own_binder (b : Nat) : b = b := rfl\n\nend\n"
+  },
+  "known": [],
+  "expected": {
+   "own_binder": []
+  },
+  "why": "A declaration binder with the same name as a section variable hides the variable, which is then not included."
+ },
+ {
+  "id": "reg-omit-instance-variable",
+  "files": {
+   "Pkg/File.lean": "class Good (α : Type) : Prop where\n  ok : True\n\nsection\nvariable {α : Type} [Good α]\n\nomit [Good α] in\ntheorem plain (a : α) : a = a := rfl\n\nend\n"
+  },
+  "known": [],
+  "expected": {
+   "plain": []
+  },
+  "why": "`omit [Good α] in` keeps the instance variable out of the theorem's type."
+ },
+ {
+  "id": "reg-structure-ignores-unused-instance-variable",
+  "files": {
+   "Pkg/File.lean": "class Good (α : Type) : Prop where\n  ok : True\n\nsection\nvariable (α : Type) [Good α]\n\nstructure Wrap where\n  val : α\n\nend\n"
+  },
+  "known": [],
+  "expected": {
+   "Wrap": []
+  },
+  "why": "Instance-implicit section variables are not added to a structure's type unless used, so `Wrap : Type → Type` does not reference `Good`."
+ },
+ {
+  "id": "reg-dotted-membership-domain",
+  "files": {
+   "Pkg/File.lean": "namespace Lib\ndef evens : List Nat := [0, 2, 4]\nend Lib\n\ntheorem all_even : ∀ x ∈ Lib.evens, x % 2 = 0 := by decide\n"
+  },
+  "known": [],
+  "expected": {
+   "all_even": [
+    "Lib.evens"
+   ]
+  },
+  "why": "A qualified domain in a binder predicate (`∀ x ∈ Lib.evens`) is found."
+ },
+ {
+  "id": "reg-attribute-and-deriving-not-in-signature",
+  "files": {
+   "Pkg/File.lean": "theorem new_name : True := trivial\n\n@[deprecated new_name (since := \"2024-01-01\")]\ntheorem old_name : True := trivial\n\ninductive Color where\n  | red | green\n  deriving Repr, DecidableEq\n"
+  },
+  "known": [
+   "DecidableEq",
+   "Repr"
+  ],
+  "expected": {
+   "old_name": [],
+   "Color": []
+  },
+  "why": "Names in attribute arguments and `deriving` clauses are not part of the declaration's type."
+ }
+]

@@ -15,6 +15,7 @@ Supports two doc-gen4 output formats:
 """
 
 import logging
+from collections.abc import Collection
 from pathlib import Path
 
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession
@@ -83,12 +84,16 @@ def _detect_docgen_format(workspace_path: Path) -> str:
     return "none"
 
 
-def _extract_package(lean_root: Path, package_name: str) -> list[Declaration]:
+def _extract_package(
+    lean_root: Path, package_name: str, known_names: Collection[str] = ()
+) -> list[Declaration]:
     """Extract the declarations of one package workspace.
 
     Args:
         lean_root: Root directory containing the package workspaces.
         package_name: Registry name of the package (and its workspace).
+        known_names: Names extracted from earlier packages, which a source
+            package's signatures can refer to.
 
     Returns:
         The package's declarations, or an empty list if the workspace has no
@@ -98,7 +103,7 @@ def _extract_package(lean_root: Path, package_name: str) -> list[Declaration]:
 
     package_config = PACKAGE_REGISTRY[package_name]
     if package_config.extraction is ExtractionMethod.SOURCE:
-        return extract_source_package(lean_root, package_config)
+        return extract_source_package(lean_root, package_config, known_names)
     workspace_path = lean_root / package_name
     docgen_format = _detect_docgen_format(workspace_path)
 
@@ -154,9 +159,12 @@ def _extract_all_packages(lean_root: Path) -> list[Declaration]:
     """
     from lean_explore.extract.packages.workspace import get_extraction_order
 
-    all_declarations = []
+    all_declarations: list[Declaration] = []
+    known_names: set[str] = set()
     for package_name in get_extraction_order():
-        all_declarations.extend(_extract_package(lean_root, package_name))
+        declarations = _extract_package(lean_root, package_name, known_names)
+        known_names.update(declaration.name for declaration in declarations)
+        all_declarations.extend(declarations)
 
     if not all_declarations:
         raise FileNotFoundError("No declarations extracted from any package workspace")

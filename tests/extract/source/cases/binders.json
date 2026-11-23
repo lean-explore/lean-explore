@@ -1,0 +1,428 @@
+[
+ {
+  "id": "forall-mem-captures-set",
+  "files": {
+   "Pkg/File.lean": "open List\n\ntheorem range_lt (n : Nat) : ∀ i ∈ range n, i < n := sorry\n"
+  },
+  "known": [
+   "List.range"
+  ],
+  "expected": {
+   "range_lt": [
+    "List.range"
+   ]
+  },
+  "why": "Binder-predicate syntax `∀ i ∈ range n,` puts the whole `i ∈ range n` into the keyword-binder group, so `range` (here List.range via `open List`) is treated as a bound name and dropped. Same for `∃ x > c`, `∑ i ∈ range n`, `⋃ i ∈ s` with any undotted global on the right-hand side."
+ },
+ {
+  "id": "forall-anon-instance-binder",
+  "files": {
+   "Pkg/File.lean": "class Pos (n : Nat) : Prop where\n  pos : 0 < n\n\ntheorem pos_of_pos : ∀ n [Pos n], 0 < n := sorry\n"
+  },
+  "known": [],
+  "expected": {
+   "pos_of_pos": [
+    "Pos"
+   ]
+  },
+  "why": "In `∀ n [Pos n], ...` the keyword-binder group runs up to the comma and includes the anonymous instance binder, so the class `Pos` is marked as bound. Also hits `∀ {ι} [Fintype ι], ...` whenever the first binder is untyped."
+ },
+ {
+  "id": "ascription-in-binder-type",
+  "files": {
+   "Pkg/File.lean": "def double (n : Nat) : Nat := 2 * n\n\ntheorem double_eq (n : Nat) (h : (double n : Int) = 4) : n = 2 := sorry\n"
+  },
+  "known": [],
+  "expected": {
+   "double_eq": [
+    "double"
+   ]
+  },
+  "why": "Before the colon every `(name ... :` is read as a binder, so the type ascription `(double n : Int)` inside the hypothesis type makes `double` a local name. Typical Mathlib form: `(h : (card s : ℝ) ≤ 1)` after `open Finset`."
+ },
+ {
+  "id": "variable-inner-binder-leaks",
+  "files": {
+   "Pkg/File.lean": "namespace Cx\ndef I : Nat := 1\nend Cx\n\nopen Cx\n\nsection\nvariable (hI : ∀ I : List Nat, I.length ≥ 0)\n\ntheorem I_sq : I * I = 1 := rfl\nend\n"
+  },
+  "known": [],
+  "expected": {
+   "I_sq": [
+    "Cx.I"
+   ]
+  },
+  "why": "`variable` commands run the binder regexes over the whole command text, so names bound inside a variable's type (`∀ I : List Nat, ...`) become section-wide locals. They then hide the global `Cx.I` in every later declaration of the section, including ones that never mention the variable."
+ },
+ {
+  "id": "variable-ascription-leak",
+  "files": {
+   "Pkg/File.lean": "def base : Nat := 2\n\nsection\nvariable (n : Nat) (hn : (base : Int) ≤ n)\n\ntheorem base_le : base ≤ base := Nat.le_refl _\nend\n"
+  },
+  "known": [],
+  "expected": {
+   "base_le": [
+    "base"
+   ]
+  },
+  "why": "The ascription `(base : Int)` inside a `variable` hypothesis is recorded as a section variable named `base`, so `base_le`, which does not use the variable at all, loses its reference to the global `base`. This is the same misreading as in ascription-in-binder-type, but it reaches every later declaration in the section."
+ },
+ {
+  "id": "protected-member-not-short-name",
+  "files": {
+   "Pkg/File.lean": "def size (n : Nat) : Nat := n\n\nnamespace Box\nprotected def size (n : Nat) : Nat := n + 1\n\ntheorem size_eq (n : Nat) : size n = n := rfl\nend Box\n"
+  },
+  "known": [],
+  "expected": {
+   "Box.size_eq": [
+    "size"
+   ]
+  },
+  "why": "Lean never resolves an atomic identifier to a `protected` declaration through the current namespace or an `open`, so `size` inside `namespace Box` is the root `size`. The extractor picks `Box.size`. This matters for `min`/`max`/`cast`/`sub` inside `namespace Nat`/`Int`, where those members are protected."
+ },
+ {
+  "id": "root-decl-loses-enclosing-namespace",
+  "files": {
+   "Pkg/File.lean": "namespace Poly\ndef eval (n : Nat) : Nat := n\n\ntheorem _root_.eval_zero : eval 0 = 0 := rfl\nend Poly\n"
+  },
+  "known": [],
+  "expected": {
+   "eval_zero": [
+    "Poly.eval"
+   ]
+  },
+  "why": "A `theorem _root_.foo` written inside `namespace Poly` is still elaborated with `Poly` as the current namespace, so `eval` means `Poly.eval`. The extractor only uses the declaration's own name prefixes for namespace resolution, so it finds nothing. This is common in Mathlib (`theorem _root_.IsUnit.foo` inside `namespace Polynomial`)."
+ },
+ {
+  "id": "untyped-binder-not-local",
+  "files": {
+   "Pkg/File.lean": "namespace Poly\ndef X : Nat := 7\nend Poly\n\nopen Poly\n\ntheorem untyped_zero {X} (h : X = 0) : X + 1 = 1 := by simp [h]\n"
+  },
+  "known": [],
+  "expected": {
+   "untyped_zero": []
+  },
+  "why": "Untyped binders `{X}`, `(X)` and `(X := v)` have no colon, so the bracket-binder regex never sees them. The local `X` is then resolved to the opened global `Poly.X` (think `open Polynomial` with a binder named `X`)."
+ },
+ {
+  "id": "dependent-arrow-binder-in-type",
+  "files": {
+   "Pkg/File.lean": "namespace Poly\ndef X : Nat := 7\nend Poly\n\nopen Poly\n\ndef evalAt : (X : Nat) → Fin (X + 1) := fun X => ⟨X, Nat.lt_succ_self X⟩\n"
+  },
+  "known": [],
+  "expected": {
+   "evalAt": []
+  },
+  "why": "Bracketed binders after the colon are deliberately not read, so the dependent-arrow binder in `(X : Nat) → Fin (X + 1)` is not local, and `X` resolves to the opened global `Poly.X`. Pi binders and `(x : α) × β x` binders in a type have the same problem."
+ },
+ {
+  "id": "subtype-binder-in-type",
+  "files": {
+   "Pkg/File.lean": "namespace Poly\ndef X : Nat := 7\nend Poly\n\nopen Poly\n\ndef toPos (n : Nat) : {X : Nat // 0 < X} := ⟨n + 1, Nat.succ_pos n⟩\n"
+  },
+  "known": [],
+  "expected": {
+   "toPos": []
+  },
+  "why": "Subtype binder `{X : Nat // 0 < X}` in the result type is not recognised as a binder (bracketed binders after the colon are skipped), so the local `X` resolves to the opened global `Poly.X`."
+ },
+ {
+  "id": "let-binder-in-type",
+  "files": {
+   "Pkg/File.lean": "namespace Poly\ndef X : Nat := 7\nend Poly\n\nopen Poly\n\ntheorem let_X : let X := 3; X + 1 = 4 := rfl\n"
+  },
+  "known": [],
+  "expected": {
+   "let_X": []
+  },
+  "why": "`let X := 3; ...` inside a statement binds `X`, but `let`/`have` binders are not collected, so `X` resolves to the opened global `Poly.X`."
+ },
+ {
+  "id": "sigma-prime-binder",
+  "files": {
+   "Pkg/File.lean": "namespace Poly\ndef X : Nat := 7\nend Poly\n\nopen Poly\n\ndef someBounded : Σ' X : Nat, X < 10 := ⟨0, by decide⟩\n"
+  },
+  "known": [],
+  "expected": {
+   "someBounded": []
+  },
+  "why": "The keyword list requires whitespace right after `Σ`, so `Σ' X : Nat, ...` (and similarly `∑' n,`, `∏ᶠ i,`, `∀ᶠ x in l,`, `∫ x,`) binds nothing, and `X` resolves to the opened global `Poly.X`."
+ },
+ {
+  "id": "match-pattern-var-in-type",
+  "files": {
+   "Pkg/File.lean": "namespace Poly\ndef X : Nat := 7\nend Poly\n\nopen Poly\n\ndef Shape (n : Nat) : Type :=\n  match n with\n  | 0 => Unit\n  | X + 1 => Fin X\ntheorem shape_succ (n : Nat) : Shape (n + 1) = (match n + 1 with | 0 => Unit | X + 1 => Fin X) := rfl\n"
+  },
+  "known": [],
+  "expected": {
+   "shape_succ": [
+    "Shape"
+   ]
+  },
+  "why": "Pattern variables of a `match` inside a type (`| X + 1 => Fin X`) are not collected as bound names, so `X` resolves to the opened global `Poly.X`."
+ },
+ {
+  "id": "named-arg-label",
+  "files": {
+   "Pkg/File.lean": "def scale (factor : Nat := 2) (n : Nat) : Nat := factor * n\n\ndef factor : Nat := 3\n\ntheorem scale_eq : scale (factor := 5) 1 = 5 := rfl\n"
+  },
+  "known": [],
+  "expected": {
+   "scale_eq": [
+    "scale"
+   ]
+  },
+  "why": "The label of a named argument `(factor := 5)` is a parameter name, not a reference. It is read as an identifier and resolved to the unrelated global `factor`. Structure-instance field labels `{ width := 5 }` behave the same way."
+ },
+ {
+  "id": "universe-max-resolved-as-term",
+  "files": {
+   "Pkg/File.lean": "universe u v\n\nnamespace Ord2\ndef max (a b : Nat) : Nat := if a < b then b else a\n\ndef Pair (α : Type u) (β : Type v) : Type (max u v) := α × β\nend Ord2\n"
+  },
+  "known": [],
+  "expected": {
+   "Ord2.Pair": []
+  },
+  "why": "Universe level expressions are scanned like terms, so `max` in `Type (max u v)` resolves to the namespace member `Ord2.max`. Universe names such as `u`/`v` would equally resolve to same-named globals. Inside `namespace Nat`/`Finset` this would produce `Nat.max`/`Finset.max`."
+ },
+ {
+  "id": "autoparam-tactic-names",
+  "files": {
+   "Pkg/File.lean": "theorem helper (n : Nat) : 0 < n + 1 := Nat.succ_pos n\n\ndef safeDiv (a b : Nat) (h : 0 < b + 1 := by exact helper b) : Nat := a / (b + 1)\n"
+  },
+  "known": [],
+  "expected": {
+   "safeDiv": []
+  },
+  "why": "An autoParam `(h : P := by exact helper b)` stores only the tactic syntax (`safeDiv._auto_1`) in the type, so `helper` is not a constant of the type. The extractor scans the tactic text and reports it. Contrast optParam defaults (`:= defaultWidth`), which really are in the type."
+ },
+ {
+  "id": "extends-not-in-type",
+  "files": {
+   "Pkg/File.lean": "class Pointed (α : Type) where\n  pt : α\n\nstructure Point3 (α : Type) extends Pointed α where\n  x : α\n"
+  },
+  "known": [],
+  "expected": {
+   "Pointed": [],
+   "Point3": []
+  },
+  "why": "The type of `Point3` is `Type → Type`. Parents listed in `extends` are not part of the declaration's type, but the structure/class signature text includes `extends Pointed α`, so `Pointed` is reported."
+ },
+ {
+  "id": "ctor-without-type",
+  "files": {
+   "Pkg/File.lean": "inductive Color where\n  | red\n  | green\n\ninductive Tree (α : Type) where\n  | leaf\n  | node (l : Tree α) (v : α) (r : Tree α)\n"
+  },
+  "known": [],
+  "expected": {
+   "Color.red": [
+    "Color"
+   ],
+   "Tree.leaf": [
+    "Tree"
+   ],
+   "Tree.node": [
+    "Tree"
+   ]
+  },
+  "why": "A constructor written without a result type (`| red`, `| leaf`) has the inductive as its type, but its signature text is only `| red`, so the inductive is never reported. `Tree.node` passes only because a binder happens to mention `Tree`."
+ },
+ {
+  "id": "structure-custom-ctor",
+  "files": {
+   "Pkg/File.lean": "structure Pt where\n  mk' ::\n  x : Nat\n  y : Nat\n"
+  },
+  "known": [
+   "Nat"
+  ],
+  "expected": {
+   "Pt.mk'": [
+    "Nat",
+    "Pt"
+   ]
+  },
+  "why": "A custom structure constructor `mk' ::` has type `Nat → Nat → Pt`, but its signature text is just `mk' ::`. Neither the field types nor the structure are found."
+ },
+ {
+  "id": "field-notation-on-global-def",
+  "files": {
+   "Pkg/File.lean": "structure Point where\n  x : Nat\n  y : Nat\n\ndef origin : Point := ⟨0, 0⟩\n\ntheorem origin_x : origin.x = 0 := rfl\n"
+  },
+  "known": [],
+  "expected": {
+   "origin_x": [
+    "Point.x",
+    "origin"
+   ]
+  },
+  "why": "`origin.x` with a global `origin : Point` elaborates to `Point.x origin`. The extractor falls back from the unknown `origin.x` to `origin` and never adds the projection `Point.x`, even though `origin`'s declared type is in the file."
+ },
+ {
+  "id": "explicit-field-reference",
+  "files": {
+   "Pkg/File.lean": "structure Point where\n  x : Nat\n  y : Nat\n\ntheorem x_of (p : Point) (h : Point.x p = 0) : p.x = 0 := h\n\nnamespace Point\ndef origin : Point := ⟨0, 0⟩\ntheorem x_origin : x origin = 0 := rfl\nend Point\n\ndef f (n : Nat) : Nat := go n\nwhere go (k : Nat) : Nat := k\n\ntheorem f_go : f.go 1 = 1 := rfl\n"
+  },
+  "known": [],
+  "expected": {
+   "Point.x_origin": [
+    "Point.origin",
+    "Point.x"
+   ],
+   "x_of": [
+    "Point",
+    "Point.x"
+   ],
+   "f_go": [
+    "f.go"
+   ]
+  },
+  "why": "Fields, `.mk` constructors and `where`/`let rec` helpers are dropped as 'unstored' kinds before the known-name set is built, so even fully written references to them (`Point.x p`, `x origin` in `namespace Point`, `f.go 1`) cannot resolve. `f.go` also falls back to the wrong declaration `f`."
+ },
+ {
+  "id": "reg-optparam-default",
+  "files": {
+   "Pkg/File.lean": "def defaultWidth : Nat := 80\n\ndef pad (n : Nat) (width : Nat := defaultWidth) : Nat := n + width\n"
+  },
+  "known": [],
+  "expected": {
+   "pad": [
+    "defaultWidth"
+   ]
+  },
+  "why": "An optParam default `(width : Nat := defaultWidth)` really is part of the type (`optParam Nat defaultWidth`) and must keep being reported, while the binder name itself stays local."
+ },
+ {
+  "id": "reg-variable-out-of-scope",
+  "files": {
+   "Pkg/File.lean": "def x : Nat := 1\n\nsection\nvariable (x : Nat)\ntheorem a_self : x = x := rfl\nend\n\ntheorem b_global : x = 1 := rfl\n\nnamespace Inner\nvariable (x : Nat)\nend Inner\n\nnamespace Ns\ntheorem c_global : x = 1 := rfl\nend Ns\n"
+  },
+  "known": [],
+  "expected": {
+   "a_self": [],
+   "b_global": [
+    "x"
+   ],
+   "Ns.c_global": [
+    "x"
+   ]
+  },
+  "why": "A `variable (x)` shadows the global `x` only until its section or namespace ends, so later declarations, including ones in another namespace, must report the global `x` again."
+ },
+ {
+  "id": "reg-binders-shadow-namespace-members",
+  "files": {
+   "Pkg/File.lean": "namespace Foo\ndef a : Nat := 1\ndef b : Nat := 2\ndef f (n : Nat) : Nat := n\ndef inst : Inhabited Nat := ⟨0⟩\ndef X : Nat := 7\n\ntheorem shadow ⦃a b : Nat⦄ [inst : Inhabited Nat] {f : Nat → Nat} (h : f a = b) :\n    ∀ X, ∃ Y, f X = Y := fun X => ⟨f X, rfl⟩\n\nsection\nvariable (a : Nat)\ntheorem var_shadow : a = a := rfl\nend\nend Foo\n"
+  },
+  "known": [],
+  "expected": {
+   "Foo.shadow": [],
+   "Foo.var_shadow": []
+  },
+  "why": "Typed strict-implicit, instance, implicit and explicit binders, `∀`/`∃` binders and section variables all shadow same-named members of the enclosing namespace (`Foo.a`, `Foo.f`, `Foo.inst`, `Foo.X`)."
+ },
+ {
+  "id": "reg-dotted-decl-uses-own-namespace",
+  "files": {
+   "Pkg/File.lean": "def baz : Nat := 0\n\ndef Foo.baz : Nat := 1\n\ntheorem Foo.bar : baz = 1 := rfl\n"
+  },
+  "known": [],
+  "expected": {
+   "Foo.bar": [
+    "Foo.baz"
+   ]
+  },
+  "why": "`theorem Foo.bar` declared at top level resolves `baz` to `Foo.baz` in preference to the root `baz`."
+ },
+ {
+  "id": "reg-autobound-implicit",
+  "files": {
+   "Pkg/File.lean": "def n : Nat := 3\n\ntheorem auto_n (h : a = n) : a = 3 := h\n"
+  },
+  "known": [],
+  "expected": {
+   "auto_n": [
+    "n"
+   ]
+  },
+  "why": "With autoImplicit, the unbound `a` is auto-bound while `n` resolves to the global `n`. Nothing spurious is reported for `a`."
+ },
+ {
+  "id": "reg-named-instance-and-class-params",
+  "files": {
+   "Pkg/File.lean": "class Base (α : Type) where\n  base : α\n\nclass Derived (α : Type) [Base α] where\n  derived : α\n\ninstance instDerived {α : Type} [Base α] : Derived α := ⟨Base.base⟩\n"
+  },
+  "known": [],
+  "expected": {
+   "Derived": [
+    "Base"
+   ],
+   "instDerived": [
+    "Base",
+    "Derived"
+   ]
+  },
+  "why": "Anonymous instance binders `[Base α]` in class parameters and named instances refer to the classes, and both must be reported."
+ },
+ {
+  "id": "reg-local-dotted-vs-global-dotted",
+  "files": {
+   "Pkg/File.lean": "theorem succ_eq (n : Nat) : n.succ = Nat.succ n := rfl\n"
+  },
+  "known": [
+   "Nat",
+   "Nat.succ"
+  ],
+  "expected": {
+   "succ_eq": [
+    "Nat",
+    "Nat.succ"
+   ]
+  },
+  "why": "`n.succ` on a local is skipped (field access on a local is a known limit), while the qualified `Nat.succ` resolves."
+ },
+ {
+  "id": "reg-outer-variable-in-nested-namespace",
+  "files": {
+   "Pkg/File.lean": "def Outer.Inner.x : Nat := 3\n\nnamespace Outer\ndef y : Nat := 2\nvariable (x : Nat)\n\nnamespace Inner\ntheorem t : x = x := rfl\ntheorem u : y = 2 := rfl\nend Inner\nend Outer\n"
+  },
+  "known": [],
+  "expected": {
+   "Outer.Inner.t": [],
+   "Outer.Inner.u": [
+    "Outer.y"
+   ]
+  },
+  "why": "A variable from an enclosing namespace stays in scope in a nested namespace and shadows `Outer.Inner.x`, while other members of the enclosing namespace (`Outer.y`) still resolve."
+ },
+ {
+  "id": "reg-membership-without-binder-predicate",
+  "files": {
+   "Pkg/File.lean": "open List\n\ntheorem range_lt' (n : Nat) : ∀ i, i ∈ range n → i < n := sorry\n"
+  },
+  "known": [
+   "List.range"
+  ],
+  "expected": {
+   "range_lt'": [
+    "List.range"
+   ]
+  },
+  "why": "Counterpart of forall-mem-captures-set: when membership is written as `∀ i, i ∈ range n → ...`, the opened `List.range` is correctly reported."
+ },
+ {
+  "id": "reg-dotted-decl-into-external-namespace",
+  "files": {
+   "Pkg/File.lean": "theorem Nat.succ_eq_add_one' (n : Nat) : succ n = n + 1 := rfl\n"
+  },
+  "known": [
+   "Nat",
+   "Nat.succ"
+  ],
+  "expected": {
+   "Nat.succ_eq_add_one'": [
+    "Nat",
+    "Nat.succ"
+   ]
+  },
+  "why": "A declaration `Nat.foo` resolves the short name `succ` to `Nat.succ` from its own name prefix, the common Mathlib pattern."
+ }
+]

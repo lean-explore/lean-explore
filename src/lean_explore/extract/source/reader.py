@@ -6,16 +6,18 @@ each declaration with the ranges Lean records for it. The rows match what the
 doc-gen4 path stores for the same declaration: the same line range, source
 text, docstring and source link format.
 
-The parser does not elaborate, so the rows have no dependencies, anonymous
-instances are skipped because their names come from the elaborated type, and
-names that attributes such as ``to_additive`` derive by rule are left out
-unless requested, because they are guesses.
+The parser does not elaborate, so dependencies are the names written in each
+signature that resolve to a known declaration (the parser's ``refs`` module
+resolves them by Lean's lookup rules), anonymous instances are skipped because
+their names come from the elaborated type, and names that attributes such as
+``to_additive`` derive by rule are left out unless requested, because they are
+guesses.
 Install the parser with ``pip install ./src/lean_explore/parser/crates/lean-source-py``.
 """
 
 import importlib
 import logging
-from collections.abc import Callable
+from collections.abc import Callable, Collection
 from pathlib import Path
 from types import ModuleType
 from typing import Any
@@ -181,11 +183,87 @@ def _to_declaration(
     )
 
 
+def _stored_rows(
+    path: Path,
+    file_declarations: list[dict[str, Any]],
+    link_base: str,
+    include_approximate: bool,
+) -> list[tuple[Declaration, list[str]]]:
+    """Build one file's stored rows, each with the names it refers to."""
+    stored = [
+        declaration
+        for declaration in file_declarations
+        if declaration["name"] and is_stored(declaration, include_approximate)
+    ]
+    if not stored:
+        return []
+    with open(path, encoding="utf-8", errors="replace") as source_file:
+        lines = source_file.readlines()
+    return [
+        (
+            _to_declaration(declaration, lines, str(path), link_base),
+            declaration["references"],
+        )
+        for declaration in stored
+    ]
+
+
+def _read_rows(
+    paths: list[Path],
+    source_root: Path,
+    link_base: str,
+    include_approximate: bool,
+    known_names: Collection[str],
+) -> dict[str, tuple[Declaration, list[str]]]:
+    """Parse the files and build the stored rows by name, in file order.
+
+    Each row comes with the names the parser resolved in its signature. The
+    parser's output is released on return, before the rows are worked on.
+    """
+    parsed = load_parser().parse_files(
+        [str(path) for path in paths],
+        root=str(source_root),
+        text=True,
+        references=True,
+        known_names=list(known_names),
+        include_approximate=include_approximate,
+    )
+    rows: dict[str, tuple[Declaration, list[str]]] = {}
+    for path, file_declarations in zip(paths, parsed, strict=True):
+        for row in _stored_rows(
+            path, file_declarations, link_base, include_approximate
+        ):
+            # A name declared twice keeps its first declaration.
+            rows.setdefault(row[0].name, row)
+    return rows
+
+
+def _set_dependencies(
+    rows: dict[str, tuple[Declaration, list[str]]], known_names: Collection[str]
+) -> None:
+    """Keep, as each row's dependencies, the references that are stored.
+
+    The parser resolves an identifier to whatever Lean would, including
+    private declarations, structure fields and other names that are not
+    stored. Such a name shadows the other candidates, so the identifier is
+    not a reference to any of them, and it is dropped here.
+    """
+    stored = frozenset(known_names).union(rows)
+    for name, (declaration, references) in rows.items():
+        kept = [
+            reference
+            for reference in references
+            if reference in stored and reference != name
+        ]
+        declaration.dependencies = kept or None
+
+
 def parse_package_sources(
     source_root: Path,
     link_base: str,
     include_module: Callable[[str], bool],
     include_approximate: bool = False,
+    known_names: Collection[str] = (),
 ) -> list[Declaration]:
     """Parse a package checkout into declaration rows.
 
@@ -196,38 +274,32 @@ def parse_package_sources(
         include_approximate: Also keep names that a naming rule derived, such
             as ``to_additive`` translations without a written name. They are
             guesses and can name declarations that do not exist.
+        known_names: Names of declarations outside the package, such as those
+            of its dependencies, that its signatures can refer to.
 
     Returns:
         One row per stored declaration name, in file order.
     """
     paths = package_files(source_root, include_module)
-    parsed = load_parser().parse_files(
-        [str(path) for path in paths], root=str(source_root), text=True
-    )
-    declarations: dict[str, Declaration] = {}
-    for path, file_declarations in zip(paths, parsed, strict=True):
-        with open(path, encoding="utf-8") as source_file:
-            lines = source_file.readlines()
-        for declaration in file_declarations:
-            name = declaration["name"]
-            if is_stored(declaration, include_approximate) and name not in declarations:
-                declarations[name] = _to_declaration(
-                    declaration, lines, str(path), link_base
-                )
-    logger.info(
-        "Parsed %d source files into %d declarations", len(paths), len(declarations)
-    )
-    return list(declarations.values())
+    known_names = frozenset(known_names)
+    rows = _read_rows(paths, source_root, link_base, include_approximate, known_names)
+    _set_dependencies(rows, known_names)
+    logger.info("Parsed %d source files into %d declarations", len(paths), len(rows))
+    return [declaration for declaration, _ in rows.values()]
 
 
 def extract_source_package(
-    lean_root: Path, package_config: PackageConfig
+    lean_root: Path,
+    package_config: PackageConfig,
+    known_names: Collection[str] = (),
 ) -> list[Declaration]:
     """Extract a source package from its checkout under ``lean_root``.
 
     Args:
         lean_root: Root directory containing the package workspaces.
         package_config: Configuration of the package.
+        known_names: Names of declarations extracted from other packages,
+            which this package's signatures can refer to.
 
     Returns:
         The package's declarations, or an empty list if it was not fetched.
@@ -239,5 +311,8 @@ def extract_source_package(
     link_base = source_link_base(package_config.git_url, read_commit(directory))
     logger.info("[%s] Parsing sources (no build)", package_config.name)
     return parse_package_sources(
-        directory, link_base, package_config.should_include_module
+        directory,
+        link_base,
+        package_config.should_include_module,
+        known_names=known_names,
     )
