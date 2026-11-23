@@ -2,6 +2,7 @@
 
 use lean_source::keywords::Modifier;
 use lean_source::pos::LineIndex;
+use lean_source::refs::{SourceFile, resolve_references};
 use lean_source::{Parsed, Span};
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
@@ -28,6 +29,7 @@ fn decls_to_py<'py>(
     file: &str,
     module: &str,
     text: bool,
+    references: Option<&[Vec<&str>]>,
 ) -> PyResult<Bound<'py, PyList>> {
     let idx = LineIndex::new(src);
     let out = PyList::empty(py);
@@ -65,6 +67,9 @@ fn decls_to_py<'py>(
             o.set_item("type_text", d.type_.map(|s| slice(src, s)))?;
             o.set_item("doc_text", d.doc.map(|s| slice(src, s)))?;
         }
+        if let Some(names) = references.and_then(|all| all.get(i)) {
+            o.set_item("references", PyList::new(py, names.iter().copied())?)?;
+        }
         out.append(o)?;
     }
     Ok(out)
@@ -85,7 +90,7 @@ fn parse<'py>(
     text: bool,
 ) -> PyResult<Bound<'py, PyList>> {
     let parsed = py.detach(|| lean_source::parse(source.as_bytes()));
-    decls_to_py(py, source.as_bytes(), &parsed, file, module, text)
+    decls_to_py(py, source.as_bytes(), &parsed, file, module, text, None)
 }
 
 /// File name and module name of `path` relative to `root`: `Mathlib/Data/Nat.lean` gives
@@ -110,14 +115,33 @@ fn module_of(path: &std::path::Path, root: Option<&std::path::Path>) -> (String,
 /// declaration dicts per path, in order. Module names are relative to `root` when it is given.
 /// `context_paths` supplies imported Lean files for name and field resolution without emitting
 /// their declarations. A missing context file is an error.
+///
+/// With `references=True` each declaration dict also has `"references"`: the full names its
+/// signature refers to, in order of first appearance, resolved by Lean's lookup rules among
+/// the declarations of `paths` and `known_names` (names declared elsewhere, such as in the
+/// project's dependencies). The list includes names that only shadow others, such as private
+/// declarations and structure fields, and can include the declaration's own name.
+/// `include_approximate` lets names that a naming rule derived be referred to as well.
 #[pyfunction]
-#[pyo3(signature = (paths, root = None, text = false, context_paths = None))]
+#[pyo3(signature = (
+    paths,
+    root = None,
+    text = false,
+    context_paths = None,
+    references = false,
+    known_names = None,
+    include_approximate = false,
+))]
+#[allow(clippy::too_many_arguments)]
 fn parse_files<'py>(
     py: Python<'py>,
     paths: Vec<std::path::PathBuf>,
     root: Option<std::path::PathBuf>,
     text: bool,
     context_paths: Option<Vec<std::path::PathBuf>>,
+    references: bool,
+    known_names: Option<Vec<String>>,
+    include_approximate: bool,
 ) -> PyResult<Bound<'py, PyList>> {
     let context_paths = context_paths.unwrap_or_default();
     let results = py
@@ -168,12 +192,31 @@ fn parse_files<'py>(
                 .collect())
         })
         .map_err(|err| PyValueError::new_err(err.to_string()))?;
-    let out = PyList::empty(py);
+    let mut files = Vec::with_capacity(paths.len());
     for (p, r) in paths.iter().zip(results) {
         let (src, parsed) =
             r.map_err(|e| PyValueError::new_err(format!("{}: {e}", p.display())))?;
         let (file, module) = module_of(p, root.as_deref());
-        out.append(decls_to_py(py, &src, &parsed, &file, &module, text)?)?;
+        files.push((file, module, src, parsed));
+    }
+    let known_names = known_names.unwrap_or_default();
+    let resolved = references.then(|| {
+        py.detach(|| {
+            let sources: Vec<SourceFile> = files
+                .iter()
+                .map(|(_, module, src, parsed)| SourceFile {
+                    module,
+                    source: src,
+                    parsed,
+                })
+                .collect();
+            resolve_references(&sources, &known_names, include_approximate)
+        })
+    });
+    let out = PyList::empty(py);
+    for (index, (file, module, src, parsed)) in files.iter().enumerate() {
+        let names = resolved.as_ref().map(|all| all[index].as_slice());
+        out.append(decls_to_py(py, src, parsed, file, module, text, names)?)?;
     }
     Ok(out)
 }

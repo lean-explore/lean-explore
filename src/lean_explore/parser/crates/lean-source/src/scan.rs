@@ -874,7 +874,7 @@ fn remove_decls(decls: &mut Vec<Decl>, keep: &[bool]) {
 
 /// The name as Lean prints it: `«»` is dropped around components that are identifiers.
 /// Returns `None` if nothing changes.
-fn lean_name(name: &str) -> Option<String> {
+pub(crate) fn lean_name(name: &str) -> Option<String> {
     if !name.contains('«') {
         return None;
     }

@@ -8,7 +8,7 @@ Within LeanExplore it is meant for indexing projects that are not built and for 
 
 The directory has three crates:
 
-- `crates/lean-source`: the library (lexer, command segmenter, declaration reader, positions, JSON output).
+- `crates/lean-source`: the library (lexer, command segmenter, declaration reader, positions, JSON output, reference resolution).
 - `crates/lean-source-cli`: the `lean-source` command, which writes JSON Lines over files or whole trees.
 - `crates/lean-source-py`: Python bindings (`lean_source_parser`), built with maturin.
 
@@ -48,7 +48,12 @@ import lean_source_parser as lsp
 decls = lsp.parse(text, file="FLT/Foo.lean", module="FLT.Foo", text=True)
 per_file = lsp.parse_files(paths, root="path/to/project")  # parallel, one project, releases the GIL
 commands = lsp.commands(text)
+with_references = lsp.parse_files(
+    paths, root="path/to/project", references=True, known_names=names_of_dependencies
+)
 ```
+
+With `references=True` every declaration dict has `references`: the full names that the identifiers of its signature resolve to, in order of first appearance. Resolution follows Lean's lookup order (the declaration's namespaces, the root, `open` and `export` commands in effect, section variables with `include` and `omit`) and visibility (a name is visible after its declaration, inside its `mutual` block, or from a module that imports the one declaring it). Candidates are the declarations of `paths` and `known_names`. Nothing is elaborated: references through notation, field access on a term or instances are missing, and an identifier that Lean would resolve by type has none. The list includes names that only shadow others (private declarations, fields, constructors) and can include the declaration's own name, so a caller filters it down to the names it keeps. `include_approximate=True` lets names derived by a naming rule be referred to. On Mathlib (8,733 files, 96 threads) resolution adds about 0.6 s to parsing.
 
 Rust:
 
@@ -57,6 +62,11 @@ let parsed = lean_source::parse(source.as_bytes());
 for d in &parsed.decls {
     println!("{:?} {:?} {:?}", d.kind, d.name, d.range);
 }
+
+// References of every declaration of a package, per file and per declaration.
+use lean_source::refs::{SourceFile, resolve_references};
+let files = [SourceFile { module: "Pkg.Basic", source: source.as_bytes(), parsed: &parsed }];
+let references = resolve_references(&files, &known_names, false);
 
 // A project: parse every file once, collect, then read again with the context.
 let mut ctx = lean_source::Context::default();

@@ -7,10 +7,11 @@ doc-gen4 path stores for the same declaration: the same line range, source
 text, docstring and source link format.
 
 The parser does not elaborate, so dependencies are the names written in each
-signature that resolve to a known declaration (see ``references``), anonymous
-instances are skipped because their names come from the elaborated type, and
-names that attributes such as ``to_additive`` derive by rule are left out
-unless requested, because they are guesses.
+signature that resolve to a known declaration (the parser's ``refs`` module
+resolves them by Lean's lookup rules), anonymous instances are skipped because
+their names come from the elaborated type, and names that attributes such as
+``to_additive`` derive by rule are left out unless requested, because they are
+guesses.
 Install the parser with ``pip install ./src/lean_explore/parser/crates/lean-source-py``.
 """
 
@@ -24,17 +25,6 @@ from typing import Any
 from lean_explore.extract.docgen.lean_source import select_source_lines
 from lean_explore.extract.packages.config import PackageConfig
 from lean_explore.extract.source.fetch import read_commit, source_directory
-from lean_explore.extract.source.lexer import tokenize
-from lean_explore.extract.source.resolution import (
-    Row,
-    SourceFile,
-    is_named,
-    lookup_namespaces,
-    name_table,
-    owner_context,
-    resolve_rows,
-)
-from lean_explore.extract.source.scopes import FileScopes
 from lean_explore.extract.types import Declaration
 
 logger = logging.getLogger(__name__)
@@ -193,50 +183,79 @@ def _to_declaration(
     )
 
 
-def _read_file(
-    parser: ModuleType,
+def _stored_rows(
     path: Path,
-    module: str,
     file_declarations: list[dict[str, Any]],
     link_base: str,
     include_approximate: bool,
-) -> SourceFile:
-    """Read one file's declarations, scopes, imports and exports."""
+) -> list[tuple[Declaration, list[str]]]:
+    """Build one file's stored rows, each with the names it refers to."""
+    stored = [
+        declaration
+        for declaration in file_declarations
+        if declaration["name"] and is_stored(declaration, include_approximate)
+    ]
+    if not stored:
+        return []
     with open(path, encoding="utf-8", errors="replace") as source_file:
         lines = source_file.readlines()
-    # Byte offsets from the parser refer to the file as stored, so the scopes
-    # are computed from the undecoded newlines.
-    source_bytes = path.read_bytes()
-    source = source_bytes.decode("utf-8", "replace")
-    commands = parser.commands(source)
-    scopes = FileScopes(source, commands)
-    imports = [
-        tokenize(source_bytes[c["range"][0] : c["range"][3]].decode("utf-8", "replace"))
-        for c in commands
-        if c["kind"] == "import"
-    ]
-    rows = []
-    for declaration in file_declarations:
-        if not is_named(declaration, include_approximate):
-            continue
-        stored = is_stored(declaration, include_approximate)
-        scope = scopes.at(declaration["range"][0])
-        bound, siblings = owner_context(declaration, file_declarations)
-        rows.append(
-            Row(
-                declaration,
-                scope,
-                _to_declaration(declaration, lines, str(path), link_base)
-                if stored
-                else None,
-                lookup_namespaces(declaration, scope, file_declarations),
-                bound,
-                siblings,
-            )
+    return [
+        (
+            _to_declaration(declaration, lines, str(path), link_base),
+            declaration["references"],
         )
-    names = [tokens[-1].text for tokens in imports if tokens]
-    owners = [declaration["name"] for declaration in file_declarations]
-    return SourceFile(module, rows, names, scopes.aliases, owners)
+        for declaration in stored
+    ]
+
+
+def _read_rows(
+    paths: list[Path],
+    source_root: Path,
+    link_base: str,
+    include_approximate: bool,
+    known_names: Collection[str],
+) -> dict[str, tuple[Declaration, list[str]]]:
+    """Parse the files and build the stored rows by name, in file order.
+
+    Each row comes with the names the parser resolved in its signature. The
+    parser's output is released on return, before the rows are worked on.
+    """
+    parsed = load_parser().parse_files(
+        [str(path) for path in paths],
+        root=str(source_root),
+        text=True,
+        references=True,
+        known_names=list(known_names),
+        include_approximate=include_approximate,
+    )
+    rows: dict[str, tuple[Declaration, list[str]]] = {}
+    for path, file_declarations in zip(paths, parsed, strict=True):
+        for row in _stored_rows(
+            path, file_declarations, link_base, include_approximate
+        ):
+            # A name declared twice keeps its first declaration.
+            rows.setdefault(row[0].name, row)
+    return rows
+
+
+def _set_dependencies(
+    rows: dict[str, tuple[Declaration, list[str]]], known_names: Collection[str]
+) -> None:
+    """Keep, as each row's dependencies, the references that are stored.
+
+    The parser resolves an identifier to whatever Lean would, including
+    private declarations, structure fields and other names that are not
+    stored. Such a name shadows the other candidates, so the identifier is
+    not a reference to any of them, and it is dropped here.
+    """
+    stored = frozenset(known_names).union(rows)
+    for name, (declaration, references) in rows.items():
+        kept = [
+            reference
+            for reference in references
+            if reference in stored and reference != name
+        ]
+        declaration.dependencies = kept or None
 
 
 def parse_package_sources(
@@ -262,26 +281,11 @@ def parse_package_sources(
         One row per stored declaration name, in file order.
     """
     paths = package_files(source_root, include_module)
-    parser = load_parser()
-    parsed = parser.parse_files(
-        [str(path) for path in paths], root=str(source_root), text=True
-    )
-    files = [
-        _read_file(
-            parser,
-            path,
-            _module_name(path, source_root),
-            file_declarations,
-            link_base,
-            include_approximate,
-        )
-        for path, file_declarations in zip(paths, parsed, strict=True)
-    ]
-    declarations = resolve_rows(files, name_table(files, known_names))
-    logger.info(
-        "Parsed %d source files into %d declarations", len(paths), len(declarations)
-    )
-    return declarations
+    known_names = frozenset(known_names)
+    rows = _read_rows(paths, source_root, link_base, include_approximate, known_names)
+    _set_dependencies(rows, known_names)
+    logger.info("Parsed %d source files into %d declarations", len(paths), len(rows))
+    return [declaration for declaration, _ in rows.values()]
 
 
 def extract_source_package(

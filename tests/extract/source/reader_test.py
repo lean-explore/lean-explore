@@ -11,6 +11,7 @@ from lean_explore.extract.packages.config import ExtractionMethod, PackageConfig
 from lean_explore.extract.source import reader
 from lean_explore.extract.source.fetch import read_commit
 from lean_explore.extract.source.reader import (
+    _set_dependencies,
     extract_source_package,
     is_stored,
     lean_docstring,
@@ -19,6 +20,7 @@ from lean_explore.extract.source.reader import (
     parse_package_sources,
     source_link_base,
 )
+from lean_explore.extract.types import Declaration
 from lean_explore.models import Declaration as DBDeclaration
 from tests.extract.source.fixtures import make_repository
 
@@ -151,6 +153,89 @@ def test_missing_parser_has_install_hint(monkeypatch):
     monkeypatch.setattr(reader.importlib, "import_module", fail)
     with pytest.raises(RuntimeError, match="pip install ./src/lean_explore/parser"):
         load_parser()
+
+
+def _row(name: str, references: list[str]) -> tuple[Declaration, list[str]]:
+    """Build a stored row with the names the parser resolved for it."""
+    declaration = Declaration(
+        name=name,
+        module="M",
+        docstring=None,
+        source_text="",
+        source_link="",
+        dependencies=None,
+    )
+    return declaration, references
+
+
+def test_dependencies_are_the_stored_references():
+    """Unstored names and the row's own name are dropped; order is kept."""
+    rows = {
+        "a": _row("a", ["b", "Known", "a", "S.field", "hidden"]),
+        "b": _row("b", ["hidden"]),
+    }
+    _set_dependencies(rows, {"Known", "Unused"})
+    assert rows["a"][0].dependencies == ["b", "Known"]
+    assert rows["b"][0].dependencies is None
+
+
+SHADOWS = """def T := Nat
+def val := 1
+namespace A
+private def T := Nat
+def usesPrivate : T := (1 : Nat)
+structure S where
+  val : Nat
+  other : val = val
+def usesRoot : _root_.T := (1 : Nat)
+def twice : Nat := 1
+def twice : T := (1 : Nat)
+end A
+namespace B
+def usesShadowed : T := (1 : Nat)
+end B
+inductive Color where
+  | red
+  | mix (a b : Color)
+private inductive Hidden where
+  | one
+"""
+
+
+@pytest.mark.usefixtures("requires_parser")
+class TestStoragePolicy:
+    """Names that are not stored shadow other names without being recorded."""
+
+    @pytest.fixture
+    def dependencies(self, tmp_path):
+        """Dependencies of the rows of a package with shadowing names."""
+        (tmp_path / "Pkg.lean").write_text(SHADOWS, encoding="utf-8")
+        rows = parse_package_sources(
+            tmp_path, BASE, lambda module: True, known_names=["Nat"]
+        )
+        return {row.name: row.dependencies for row in rows}
+
+    def test_private_name_hides_the_root_name(self, dependencies):
+        """A private name is what the identifier means, so nothing is recorded."""
+        assert "A.T" not in dependencies
+        assert dependencies["A.usesPrivate"] is None
+        assert dependencies["A.usesRoot"] == ["T"]
+        assert dependencies["B.usesShadowed"] == ["T"]
+
+    def test_fields_are_not_rows(self, dependencies):
+        """A field is not stored, also when another field refers to it."""
+        assert dependencies["A.S"] is None
+        assert not any(name.startswith("A.S.") for name in dependencies)
+
+    def test_a_name_declared_twice_is_stored_once(self, dependencies):
+        """The first declaration of a name is the one that is kept."""
+        assert dependencies["A.twice"] == ["Nat"]
+
+    def test_constructor_refers_to_its_stored_type(self, dependencies):
+        """A constructor refers to its inductive type unless it is not stored."""
+        assert dependencies["Color.red"] == ["Color"]
+        assert dependencies["Color.mix"] == ["Color"]
+        assert dependencies["Hidden.one"] is None
 
 
 @pytest.mark.usefixtures("requires_parser")
