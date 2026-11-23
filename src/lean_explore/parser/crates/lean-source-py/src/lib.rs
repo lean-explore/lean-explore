@@ -2,7 +2,7 @@
 
 use lean_source::keywords::Modifier;
 use lean_source::pos::LineIndex;
-use lean_source::refs::{SourceFile, resolve_references};
+use lean_source::refs::{Project, References, SourceFile};
 use lean_source::{Parsed, Span};
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
@@ -11,6 +11,8 @@ use rayon::prelude::*;
 
 type SpanTuple = (u32, u32, u32, u32, u32, u32);
 type ParsedFile = std::io::Result<(Vec<u8>, Parsed)>;
+/// The parsed files of a project and the context files with their sources.
+type ParsedProject = (Vec<ParsedFile>, Vec<(Vec<u8>, Parsed)>);
 
 fn span(src: &[u8], idx: &LineIndex, s: Span) -> SpanTuple {
     let a = idx.pos(src, s.start);
@@ -29,7 +31,7 @@ fn decls_to_py<'py>(
     file: &str,
     module: &str,
     text: bool,
-    references: Option<&[Vec<&str>]>,
+    references: Option<&[References<'_>]>,
 ) -> PyResult<Bound<'py, PyList>> {
     let idx = LineIndex::new(src);
     let out = PyList::empty(py);
@@ -67,8 +69,13 @@ fn decls_to_py<'py>(
             o.set_item("type_text", d.type_.map(|s| slice(src, s)))?;
             o.set_item("doc_text", d.doc.map(|s| slice(src, s)))?;
         }
-        if let Some(names) = references.and_then(|all| all.get(i)) {
-            o.set_item("references", PyList::new(py, names.iter().copied())?)?;
+        if let Some(found) = references.and_then(|all| all.get(i)) {
+            o.set_item("references", PyList::new(py, found.names.iter().copied())?)?;
+            let in_type = found.names.iter().zip(&found.in_type);
+            let names = in_type
+                .filter(|(_, in_type)| **in_type)
+                .map(|(name, _)| *name);
+            o.set_item("type_references", PyList::new(py, names)?)?;
         }
         out.append(o)?;
     }
@@ -117,11 +124,16 @@ fn module_of(path: &std::path::Path, root: Option<&std::path::Path>) -> (String,
 /// their declarations. A missing context file is an error.
 ///
 /// With `references=True` each declaration dict also has `"references"`: the full names its
-/// signature refers to, in order of first appearance, resolved by Lean's lookup rules among
-/// the declarations of `paths` and `known_names` (names declared elsewhere, such as in the
-/// project's dependencies). The list includes names that only shadow others, such as private
-/// declarations and structure fields, and can include the declaration's own name.
-/// `include_approximate` lets names that a naming rule derived be referred to as well.
+/// signature refers to, in order of first appearance, among the declarations of `paths`, of
+/// `context_paths` and `known_names` (names declared elsewhere, such as in the project's
+/// dependencies). They are the identifiers resolved by Lean's lookup rules, the constants
+/// that notations declared in `paths` or `context_paths` stand for, and the fields of terms
+/// whose type is written. `"type_references"` are the ones written in the type after the
+/// signature's colon. A context file takes part in the modules that import it, so its path
+/// must end with its module name; every file imports `Init`. The list includes names that
+/// only shadow others, such as private declarations and structure fields, and can include
+/// the declaration's own name. `include_approximate` lets names that a naming rule derived
+/// be referred to as well.
 #[pyfunction]
 #[pyo3(signature = (
     paths,
@@ -144,13 +156,16 @@ fn parse_files<'py>(
     include_approximate: bool,
 ) -> PyResult<Bound<'py, PyList>> {
     let context_paths = context_paths.unwrap_or_default();
-    let results = py
-        .detach(|| -> std::io::Result<Vec<ParsedFile>> {
-            let context: Vec<Parsed> = context_paths
+    let (results, context) = py
+        .detach(|| -> std::io::Result<ParsedProject> {
+            let context: Vec<(Vec<u8>, Parsed)> = context_paths
                 .par_iter()
                 .map(|path| {
                     std::fs::read(path)
-                        .map(|src| lean_source::parse(&src))
+                        .map(|src| {
+                            let parsed = lean_source::parse(&src);
+                            (src, parsed)
+                        })
                         .map_err(|err| {
                             std::io::Error::new(err.kind(), format!("{}: {err}", path.display()))
                         })
@@ -165,16 +180,17 @@ fn parse_files<'py>(
                 })
                 .collect();
             if paths.len() < 2 && context.is_empty() {
-                return Ok(first);
+                return Ok((first, context));
             }
             // Imported structure fields and attribute translations may come from context files.
             let ctx = lean_source::Context::build(
                 context
                     .iter()
+                    .map(|(_, parsed)| parsed)
                     .chain(first.iter().filter_map(|r| r.as_ref().ok().map(|(_, p)| p))),
                 false,
             );
-            Ok(first
+            let again = first
                 .into_par_iter()
                 .map(|r| {
                     r.map(|(src, parsed)| {
@@ -189,7 +205,8 @@ fn parse_files<'py>(
                         }
                     })
                 })
-                .collect())
+                .collect();
+            Ok((again, context))
         })
         .map_err(|err| PyValueError::new_err(err.to_string()))?;
     let mut files = Vec::with_capacity(paths.len());
@@ -200,6 +217,11 @@ fn parse_files<'py>(
         files.push((file, module, src, parsed));
     }
     let known_names = known_names.unwrap_or_default();
+    // A context file is named by its whole path, which ends with its module name.
+    let modules: Vec<String> = context_paths
+        .iter()
+        .map(|path| module_of(path, None).1)
+        .collect();
     let resolved = references.then(|| {
         py.detach(|| {
             let sources: Vec<SourceFile> = files
@@ -210,7 +232,17 @@ fn parse_files<'py>(
                     parsed,
                 })
                 .collect();
-            resolve_references(&sources, &known_names, include_approximate)
+            let context: Vec<SourceFile> = context
+                .iter()
+                .zip(&modules)
+                .map(|((src, parsed), module)| SourceFile {
+                    module,
+                    source: src,
+                    parsed,
+                })
+                .collect();
+            Project::with_context(&sources, &context, &known_names, include_approximate)
+                .detailed_references()
         })
     });
     let out = PyList::empty(py);

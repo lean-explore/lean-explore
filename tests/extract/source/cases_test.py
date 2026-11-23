@@ -30,20 +30,22 @@ KNOWN_LIMITS = {
     "explicit-field-reference": "fields are not stored",
     "qualified-field-falls-back-to-structure": "fields are not stored",
     "explicit-mk-axiom-dropped": "names ending in .mk are not stored",
-    # Field access on a term and leading-dot names need the term's type.
-    "field-notation-on-global-def": "field access needs the receiver's type",
-    "global_receiver_method": "field access needs the receiver's type",
-    "global_function_comp": "field access needs the receiver's type",
+    # A field found by the type of its term is not stored either, nor is the
+    # parent projection that an inherited field goes through.
+    "field-notation-on-global-def": "fields are not stored",
+    "field-inherited-through-extends": "parent projections are not stored",
+    # A field is found only if the type of its term is written.
+    "field-unknown-receiver-type": "the receiver's type is not written",
+    # Leading-dot names need the expected type.
     "leading_dot": "leading-dot names need the expected type",
     "leading-dot-identifier-dropped": "leading-dot names need the expected type",
-    "modifier-letter-postfix-glued": "notations are not read",
     # Lean chooses among equal candidates by type.
     "atomic_root_and_open": "overloads are chosen by type",
     "open_from_ambiguity_multiple": "overloads are chosen by type",
+    "notation-overloaded-token": "overloads are chosen by type",
     # Forms that are not read.
     "match-pattern-var-in-type": "match patterns are not read",
     "term_open_in": "term-level open is not read",
-    "local-notation-token-shadows-constant": "notations are not read",
     "mutual_different_namespace_suffixes": "the shared namespace of a mutual "
     "block is not entered",
     "section_variable_type": "axioms take only the variables they use",

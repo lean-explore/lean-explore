@@ -2,9 +2,11 @@
 //!
 //! The file's lexer tokens are turned into a simpler stream: comments, string, character,
 //! number and name literals are dropped, identifiers are written the way Lean prints them, and
-//! symbols are split into single characters except for a few two-character ones. Brackets
+//! symbols are split into single characters except for a few two-character ones and for the
+//! atoms of notations, which are read whole, longest first, as Lean's tokenizer does. Brackets
 //! then arrange the stream into a tree.
 
+use super::notation::Atoms;
 use crate::chars::{decode, starts_ident};
 use crate::lexer::{self, Kind};
 use std::borrow::Cow;
@@ -37,6 +39,14 @@ pub struct Token<'a> {
     pub is_identifier: bool,
     /// Whether a `.` directly precedes the identifier, as in `(f x).symm`.
     pub after_dot: bool,
+    /// The number of the notation atom that is written here, or zero. For a symbol the
+    /// token is the atom. An identifier can be an atom as well, as `ℝ` is.
+    pub atom: u32,
+    /// For an atom that starts with an identifier and goes on, as `ℝ≥0` does: how many of
+    /// the following tokens are part of it. Such an atom comes before its tokens.
+    pub covers: u8,
+    /// Whether a number, string, character or name literal comes just before the token.
+    pub after_literal: bool,
 }
 
 /// A bracketed run of tokens.
@@ -46,6 +56,9 @@ pub struct Group<'a> {
     pub opening: &'static str,
     /// The tokens and nested groups between the brackets.
     pub items: Vec<Item<'a>>,
+    /// Whether a number, string, character or name literal comes just before the closing
+    /// bracket. Literals are not tokens, so `(f 1)` has the items of `(f)`.
+    pub ends_with_literal: bool,
 }
 
 /// A token or a bracket group.
@@ -117,12 +130,29 @@ fn interpolated(src: &[u8], start: usize, end: usize) -> Vec<(usize, usize)> {
 }
 
 /// Splits the symbol characters of `[start, end)` and returns where reading stopped, which
-/// is after `end` when a two-character symbol takes the first character of the next token.
-fn read_symbols<'a>(src: &'a [u8], start: usize, end: usize, out: &mut Vec<Token<'a>>) -> usize {
+/// is after `end` when a two-character symbol or an atom takes characters of the next token.
+fn read_symbols<'a>(
+    src: &'a [u8],
+    (start, end): (usize, usize),
+    atoms: &Atoms,
+    out: &mut Vec<Token<'a>>,
+) -> usize {
     let mut position = start;
     while position < end {
         let pair = src.get(position..position + 2);
-        if pair.is_some_and(|pair| TWO_CHARACTER_SYMBOLS.contains(&pair)) {
+        let is_pair = pair.is_some_and(|pair| TWO_CHARACTER_SYMBOLS.contains(&pair));
+        // An atom is read whole unless a longer built-in symbol starts here. A `%` that
+        // ends a word, as in `binop%`, is part of that keyword.
+        let ends_word = src[position] == b'%' && position > 0 && is_word_byte(src[position - 1]);
+        let atom = atoms.matches(src, position).next().filter(|_| !ends_word);
+        if let Some((number, length)) = atom.filter(|(_, length)| !is_pair || *length > 2) {
+            let mut token = symbol(text(src, position, position + length));
+            token.atom = number;
+            out.push(token);
+            position += length;
+            continue;
+        }
+        if is_pair {
             out.push(symbol(text(src, position, position + 2)));
             position += 2;
             continue;
@@ -143,35 +173,84 @@ fn read_symbols<'a>(src: &'a [u8], start: usize, end: usize, out: &mut Vec<Token
     position
 }
 
+/// Whether a byte can end an identifier.
+fn is_word_byte(byte: u8) -> bool {
+    byte.is_ascii_alphanumeric() || byte == b'_' || byte >= 0x80
+}
+
 fn symbol(text: Cow<'_, str>) -> Token<'_> {
     Token {
         text,
         is_identifier: false,
         after_dot: false,
+        atom: 0,
+        covers: 0,
+        after_literal: false,
     }
 }
 
+/// Pushes the identifier at `[start, end)`, marked if it is an atom, after the longer atom
+/// that starts with it, if there is one. Returns the index and end of that longer atom.
+fn read_identifier<'a>(
+    src: &'a [u8],
+    (start, end): (usize, usize),
+    atoms: &Atoms,
+    out: &mut Vec<Token<'a>>,
+) -> Option<(usize, usize)> {
+    let mut longer = None;
+    let mut same = 0;
+    for (number, length) in atoms.matches(src, start) {
+        if length > end - start && longer.is_none() {
+            let mut token = symbol(text(src, start, start + length));
+            token.atom = number;
+            longer = Some((out.len(), start + length));
+            out.push(token);
+        } else if length == end - start {
+            same = number;
+            break;
+        }
+    }
+    out.push(Token {
+        text: normalise(text(src, start, end)),
+        is_identifier: true,
+        after_dot: start > 0 && src[start - 1] == b'.',
+        atom: same,
+        covers: 0,
+        after_literal: false,
+    });
+    longer
+}
+
 /// Reads the identifiers and symbols of the lexer tokens `toks` of `src`, appending to `out`.
-fn read_tokens<'a>(src: &'a [u8], toks: &[lexer::Token], out: &mut Vec<Token<'a>>) {
+fn read_tokens<'a>(src: &'a [u8], toks: &[lexer::Token], atoms: &Atoms, out: &mut Vec<Token<'a>>) {
     let mut consumed = 0usize;
+    // The atom that started with an identifier and is still being read.
+    let mut longer: Option<(usize, usize)> = None;
+    // Where the next token goes, if a literal was just read.
+    let mut literal: Option<usize> = None;
     for token in toks {
         let (start, end) = (token.start as usize, token.end as usize);
-        if end <= consumed {
+        if let Some((index, _)) = longer.filter(|(_, atom_end)| start >= *atom_end) {
+            out[index].covers = (out.len() - index - 1).min(u8::MAX as usize) as u8;
+            longer = None;
+        }
+        if let Some(index) = literal.filter(|index| out.len() > *index) {
+            out[index].after_literal = true;
+            literal = None;
+        }
+        if end <= consumed || (token.kind == Kind::Ident && start < consumed) {
             continue;
         }
         match token.kind {
-            Kind::Ident => out.push(Token {
-                text: normalise(text(src, start, end)),
-                is_identifier: true,
-                after_dot: start > 0 && src[start - 1] == b'.',
-            }),
+            Kind::Ident => {
+                let found = read_identifier(src, (start, end), atoms, out);
+                longer = longer.or(found);
+            }
             Kind::Hash => {
                 out.push(symbol(text(src, start, start + 1)));
-                out.push(Token {
-                    text: normalise(text(src, start + 1, end)),
-                    is_identifier: true,
-                    after_dot: false,
-                });
+                let mut name = symbol(normalise(text(src, start + 1, end)));
+                name.is_identifier = true;
+                out.push(name);
             }
             Kind::Str => {
                 let prefixed = out
@@ -182,10 +261,18 @@ fn read_tokens<'a>(src: &'a [u8], toks: &[lexer::Token], out: &mut Vec<Token<'a>
                         out.extend(tokenize(&src[term_start..term_end]));
                     }
                 }
+                literal = Some(out.len());
             }
-            Kind::Doc | Kind::ModDoc | Kind::Char | Kind::Num | Kind::NameLit => {}
-            _ => consumed = read_symbols(src, start.max(consumed), end, out),
+            Kind::Char | Kind::Num | Kind::NameLit => literal = Some(out.len()),
+            Kind::Doc | Kind::ModDoc => {}
+            _ => consumed = read_symbols(src, (start.max(consumed), end), atoms, out),
         }
+    }
+    if let Some((index, _)) = longer {
+        out[index].covers = (out.len() - index - 1).min(u8::MAX as usize) as u8;
+    }
+    if let Some(index) = literal.filter(|index| out.len() > *index) {
+        out[index].after_literal = true;
     }
 }
 
@@ -197,10 +284,20 @@ pub fn tokenize(src: &[u8]) -> Vec<Token<'_>> {
 
 /// Like [`tokenize`], with `buffer` as the lexer's token buffer, to reuse its allocation.
 pub fn tokenize_with<'a>(src: &'a [u8], buffer: &mut Vec<lexer::Token>) -> Vec<Token<'a>> {
+    static NO_ATOMS: std::sync::OnceLock<Atoms> = std::sync::OnceLock::new();
+    tokenize_in(src, buffer, NO_ATOMS.get_or_init(Atoms::default))
+}
+
+/// Like [`tokenize_with`], reading the atoms of notations whole.
+pub fn tokenize_in<'a>(
+    src: &'a [u8],
+    buffer: &mut Vec<lexer::Token>,
+    atoms: &Atoms,
+) -> Vec<Token<'a>> {
     buffer.clear();
     lexer::lex(src, buffer);
     let mut out = Vec::with_capacity(buffer.len());
-    read_tokens(src, buffer, &mut out);
+    read_tokens(src, buffer, atoms, &mut out);
     out
 }
 
@@ -226,21 +323,25 @@ pub fn nest(tokens: Vec<Token<'_>>) -> Vec<Item<'_>> {
             if dropped > 0 {
                 dropped -= 1;
             } else if stack.len() > 1 {
-                close(&mut stack);
+                close(&mut stack, token.after_literal);
             }
         } else {
             stack.last_mut().unwrap().1.push(Item::Token(token));
         }
     }
     while stack.len() > 1 {
-        close(&mut stack);
+        close(&mut stack, false);
     }
     stack.pop().unwrap().1
 }
 
-fn close<'a>(stack: &mut Vec<(&'static str, Vec<Item<'a>>)>) {
+fn close<'a>(stack: &mut Vec<(&'static str, Vec<Item<'a>>)>, ends_with_literal: bool) {
     let (opening, items) = stack.pop().unwrap();
-    let group = Item::Group(Group { opening, items });
+    let group = Item::Group(Group {
+        opening,
+        items,
+        ends_with_literal,
+    });
     stack.last_mut().unwrap().1.push(group);
 }
 
@@ -317,11 +418,9 @@ mod tests {
     }
 
     fn word(text: &str) -> Item<'_> {
-        Item::Token(Token {
-            text: Cow::Borrowed(text),
-            is_identifier: true,
-            after_dot: false,
-        })
+        let mut token = symbol(Cow::Borrowed(text));
+        token.is_identifier = true;
+        Item::Token(token)
     }
 
     #[test]
