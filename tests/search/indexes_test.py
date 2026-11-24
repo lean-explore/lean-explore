@@ -5,7 +5,12 @@ from pathlib import Path
 
 import pytest
 
-from lean_explore.search.indexes import FAISS_NPROBE, SearchIndexes
+from lean_explore.search.indexes import (
+    FAISS_NPROBE,
+    FAISS_PROBE_ALL,
+    SearchIndexes,
+    faiss_nprobe_from_env,
+)
 from tests.search.conftest import DECLARATIONS, SearchData, fake_embed
 
 
@@ -137,3 +142,56 @@ class TestSemanticCandidates:
 
         assert ivf.nprobe_at_search == FAISS_NPROBE
         assert scores == {7: 0.5}
+
+    @pytest.mark.parametrize(("nprobe", "expected"), [(8, 8), (FAISS_PROBE_ALL, 32)])
+    def test_configured_nprobe_and_probe_all(
+        self, search_data: SearchData, nprobe: int, expected: int
+    ):
+        """A configured nprobe is used, and 0 probes every inverted list."""
+        import numpy as np
+
+        class FakeIvfIndex:
+            nprobe = 1
+            nlist = 32
+
+            def search(self, vectors, k):
+                self.nprobe_at_search = self.nprobe
+                return np.array([[0.5]]), np.array([[0]])
+
+        indexes = SearchIndexes(search_data.directory, faiss_nprobe=nprobe)
+        ivf = FakeIvfIndex()
+        indexes._faiss_index = ivf
+        indexes._faiss_id_map = [7]
+
+        indexes.semantic_candidates(fake_embed("prime").tolist(), 1)
+
+        assert ivf.nprobe_at_search == expected
+
+    def test_negative_nprobe_rejected(self, search_data: SearchData):
+        """A negative nprobe cannot select inverted lists."""
+        with pytest.raises(ValueError, match="nprobe"):
+            SearchIndexes(search_data.directory, faiss_nprobe=-1)
+
+
+class TestNprobeFromEnv:
+    """Tests for reading nprobe from the environment."""
+
+    def test_unset_uses_default(self, monkeypatch):
+        """Without the variable the default applies."""
+        monkeypatch.delenv("LEAN_EXPLORE_FAISS_NPROBE", raising=False)
+
+        assert faiss_nprobe_from_env() == FAISS_NPROBE
+
+    def test_value_is_read(self, monkeypatch):
+        """An integer value is used as is, including 0 for every list."""
+        monkeypatch.setenv("LEAN_EXPLORE_FAISS_NPROBE", "0")
+
+        assert faiss_nprobe_from_env() == FAISS_PROBE_ALL
+
+    @pytest.mark.parametrize("value", ["-1", "all", "1.5"])
+    def test_invalid_value_rejected(self, monkeypatch, value: str):
+        """Only non-negative integers are accepted."""
+        monkeypatch.setenv("LEAN_EXPLORE_FAISS_NPROBE", value)
+
+        with pytest.raises(ValueError, match="LEAN_EXPLORE_FAISS_NPROBE"):
+            faiss_nprobe_from_env()

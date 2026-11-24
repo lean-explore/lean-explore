@@ -26,6 +26,12 @@ credentials. `LEANEXPLORE_API_KEY` is deprecated and ignored when present.
 |---|---|---|
 | `LEAN_EXPLORE_EMBEDDING_BATCH_SIZE` | `8` | Batch size used when embedding the query with the sentence-transformer. Raise on GPUs with more VRAM. |
 | `LEAN_EXPLORE_RERANKER_BATCH_SIZE` | `16` on CUDA, `32` on CPU | Batch size for the cross-encoder reranker. |
+| `LEAN_EXPLORE_FAISS_NPROBE` | `64` | Inverted lists searched per query in the FAISS index. `0` searches all of them, which is an exact search. |
+| `LEAN_EXPLORE_RRF_CONSTANT` | `0` | Constant added to every rank when the name and semantic rankings are fused. |
+| `LEAN_EXPLORE_SEMANTIC_WEIGHT` | `1` | Weight of the semantic ranking in that fusion. |
+| `LEAN_EXPLORE_SEMANTIC_SHARE` | `0` | If positive, the share of the 500-candidate pool that goes to the top semantic candidates first, followed by name candidates; rank fusion is then not used. |
+
+`SearchEngine` also takes these first-stage settings as the `fusion` (`FusionSettings`) and `faiss_nprobe` arguments, which override the environment.
 
 ### Extraction pipeline (only for contributors rebuilding the index)
 
