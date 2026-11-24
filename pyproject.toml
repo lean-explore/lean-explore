@@ -86,9 +86,11 @@ dev = [
 
 [tool.setuptools.packages.find]
 where = ["src"]
+# The Rust source parser is a separate workspace with its own build.
+exclude = ["lean_explore.parser*"]
 
 [tool.setuptools.package-data]
-"lean_explore.extract.informalize" = ["prompt.txt"]
+"lean_explore.extract.informalize" = ["prompt.txt", "common_dependencies.txt"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
@@ -99,6 +101,10 @@ markers = [
     "integration: marks tests as integration tests",
     "external: marks tests that require external services",
 ]
+
+[tool.mypy]
+# The Rust source parser is a separate workspace with its own CI.
+exclude = ["^src/lean_explore/parser/"]
 
 # -- Ruff Configuration --
 
@@ -133,6 +139,7 @@ exclude = [
     "*.sqlite",
     "*.db",
     "*.json",
+    "src/lean_explore/parser",  # Rust workspace with its own CI
 ]
 
 # --- Linter specific settings ---

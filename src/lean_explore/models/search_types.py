@@ -57,6 +57,9 @@ class SearchSummaryResponse(BaseModel):
     processing_time_ms: int | None = None
     """Processing time in milliseconds, if available."""
 
+    feedback_token: str | None = None
+    """Optional hosted-service capability for explicit feedback on this search."""
+
 
 class SearchResult(BaseModel):
     """A search result representing a Lean declaration.
@@ -106,3 +109,6 @@ class SearchResponse(BaseModel):
 
     processing_time_ms: int | None = None
     """Processing time in milliseconds, if available."""
+
+    feedback_token: str | None = None
+    """Optional hosted-service capability for explicit feedback on this search."""

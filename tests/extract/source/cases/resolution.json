@@ -1,0 +1,321 @@
+[
+ {
+  "id": "atomic_root_and_open",
+  "files": {
+   "Pkg/File.lean": "import Lean\ndef pick : Nat := 0\ndef OpenSide.pick : Bool := true\nopen OpenSide\ntheorem result : (pick : Bool) = true := rfl\n"
+  },
+  "known": [],
+  "expected": {
+   "result": [
+    "OpenSide.pick"
+   ]
+  },
+  "why": "An atomic root declaration remains an overload candidate alongside a name from a simple open. Expected Bool selects OpenSide.pick."
+ },
+ {
+  "id": "open_resolves_next_namespace",
+  "files": {
+   "Pkg/File.lean": "import Lean\ndef Outer.Nested.T : Type := Nat\nopen Outer Nested\ndef result : T := (0 : Nat)\n"
+  },
+  "known": [],
+  "expected": {
+   "result": [
+    "Outer.Nested.T"
+   ]
+  },
+  "why": "open processes namespace operands left to right. The newly opened Outer makes Outer.Nested available as Nested to the second operand."
+ },
+ {
+  "id": "protected_simple_open",
+  "files": {
+   "Pkg/File.lean": "import Lean\nprotected def Guarded.T : Type := Nat\ndef Ordinary.T : Type := Bool\nopen Ordinary Guarded\ndef result : T := true\n"
+  },
+  "known": [],
+  "expected": {
+   "result": [
+    "Ordinary.T"
+   ]
+  },
+  "why": "An atomic suffix of a simple open excludes protected declarations."
+ },
+ {
+  "id": "protected_current_namespace",
+  "files": {
+   "Pkg/File.lean": "import Lean\ndef T : Type := Bool\nnamespace Guarded\nprotected def T : Type := Nat\ndef result : T := true\nend Guarded\n"
+  },
+  "known": [],
+  "expected": {
+   "Guarded.result": [
+    "T"
+   ]
+  },
+  "why": "The protected check also applies to atomic lookup through the current namespace, including the declaration’s own namespace."
+ },
+ {
+  "id": "root_decl_lexical_scope",
+  "files": {
+   "Pkg/File.lean": "import Lean\ndef Destination.T : Type := Nat\nnamespace Source\ndef T : Type := Bool\ndef _root_.Destination.result : T := true\nend Source\n"
+  },
+  "known": [],
+  "expected": {
+   "Destination.result": [
+    "Source.T"
+   ]
+  },
+  "why": "A rooted declaration name changes where the declaration is stored. The term still elaborates in the surrounding lexical namespace Source."
+ },
+ {
+  "id": "mutual_different_namespace_suffixes",
+  "files": {
+   "Pkg/File.lean": "import Lean\ndef Shared.T : Type := Bool\ndef Shared.Left.T : Type := Nat\ndef Shared.Right.T : Type := Nat\nmutual\n  def Shared.Left.result : T := true\n  def Shared.Right.result : T := true\nend\n"
+  },
+  "known": [],
+  "expected": {
+   "Shared.Left.result": [
+    "Shared.T"
+   ],
+   "Shared.Right.result": [
+    "Shared.T"
+   ]
+  },
+  "why": "Mutual extracts the common declaration namespace Shared. The individual suffixes Left and Right do not independently become current namespaces."
+ },
+ {
+  "id": "universe_vs_term",
+  "files": {
+   "Pkg/File.lean": "import Lean\ndef u : Nat := 0\nsection\nuniverse u\ndef levelOnly : Type u → Type u := fun α => α\ntheorem both : (∀ _ : Type u, u = 0) := fun _ => rfl\nend\ndef explicitLevel.{u} : Type u → Type u := fun α => α\ndef autoLevel : Type u → Type u := fun α => α\ndef explicitArgument : PUnit.{u+1} := PUnit.unit\n"
+  },
+  "known": [
+   "PUnit"
+  ],
+  "expected": {
+   "levelOnly": [],
+   "both": [
+    "u"
+   ],
+   "explicitLevel": [],
+   "autoLevel": [],
+   "explicitArgument": [
+    "PUnit"
+   ]
+  },
+  "why": "Sort levels and explicit universe arguments use a separate level context. A term occurrence of u still denotes the constant u."
+ },
+ {
+  "id": "leading_dot",
+  "files": {
+   "Pkg/File.lean": "import Lean\ninductive Flag where\n  | off\n  | on\ntheorem result : (.on : Flag) = Flag.on := rfl\ntheorem onlyDot : (.off : Flag) = .off := rfl\n"
+  },
+  "known": [],
+  "expected": {
+   "result": [
+    "Flag",
+    "Flag.on"
+   ],
+   "onlyDot": [
+    "Flag",
+    "Flag.off"
+   ]
+  },
+  "why": "Leading-dot notation uses the expected result type Flag, so .off contributes the constructor Flag.off to the statement."
+ },
+ {
+  "id": "global_receiver_method",
+  "files": {
+   "Pkg/File.lean": "import Lean\nstructure Carrier where\n  n : Nat\ndef item : Carrier := ⟨0⟩\ndef Carrier.measure (x : Carrier) : Nat := x.n\ntheorem result : item.measure = 0 := rfl\n"
+  },
+  "known": [],
+  "expected": {
+   "result": [
+    "Carrier.measure",
+    "item"
+   ]
+  },
+  "why": "The identifier resolves to receiver item with residual measure. Generalized field elaboration inserts Carrier.measure, whose name is also present in the final type."
+ },
+ {
+  "id": "global_function_comp",
+  "files": {
+   "Pkg/File.lean": "import Lean\ndef f (n : Nat) := n\ntheorem result : f.comp f = f := rfl\n"
+  },
+  "known": [
+   "Function.comp"
+  ],
+  "expected": {
+   "result": [
+    "Function.comp",
+    "f"
+   ]
+  },
+  "why": "A function-valued receiver uses the Function namespace. The final type contains Function.comp as well as f."
+ },
+ {
+  "id": "section_variable_type",
+  "files": {
+   "Pkg/File.lean": "import Lean\ndef Payload : Type := Nat\nsection\nvariable (arg : Payload)\ntheorem used : arg = arg := rfl\ntheorem unused : True := trivial\nvariable {arg}\ninclude arg\naxiom ax : True\ntheorem included : True := trivial\nomit arg\ntheorem omitted : True := trivial\nend\n"
+  },
+  "known": [],
+  "expected": {
+   "used": [
+    "Payload"
+   ],
+   "unused": [],
+   "ax": [],
+   "included": [
+    "Payload"
+   ],
+   "omitted": []
+  },
+  "why": "A used or explicitly included section variable can introduce constants from its binder type into a theorem signature. Omit removes the forced inclusion. Axioms only abstract used variables."
+ },
+ {
+  "id": "variable_binder_reelaborated",
+  "files": {
+   "Pkg/File.lean": "import Lean\ndef Payload : Type := Nat\nnamespace Inner\nvariable (arg : Payload)\ndef Payload : Type := Bool\ntheorem result : arg = true → arg = true := fun h => h\nend Inner\n"
+  },
+  "known": [],
+  "expected": {
+   "Inner.result": [
+    "Inner.Payload"
+   ]
+  },
+  "why": "Lean stores section variable binder syntax and re-elaborates it at declaration time, when Inner.Payload is the current-namespace match."
+ },
+ {
+  "id": "open_from_ambiguity_multiple",
+  "files": {
+   "Pkg/File.lean": "import Lean\ndef Outer.A.left : Type := Nat\ndef Cur.A.right : Type := Bool\nopen Outer\nnamespace Cur\nopen A\ndef result : left × right := ((0 : Nat), true)\nend Cur\n"
+  },
+  "known": [],
+  "expected": {
+   "Cur.result": [
+    "Cur.A.right",
+    "Outer.A.left"
+   ]
+  },
+  "why": "A simple open resolves both the first lexical namespace Cur.A and Outer.A through the existing simple open."
+ },
+ {
+  "id": "typeless_section_variable",
+  "files": {
+   "Pkg/File.lean": "import Lean\ndef item : Nat := 0\nsection\nvariable (item)\ntheorem result : (item : Bool) = item := rfl\nend\n"
+  },
+  "known": [],
+  "expected": {
+   "result": []
+  },
+  "why": "A typeless variable binder with no prior section variable introduces a local that shadows the root term constant."
+ },
+ {
+  "id": "term_open_in",
+  "files": {
+   "Pkg/File.lean": "import Lean\ndef A.target : Bool := true\ntheorem result : (open A in target) = true := rfl\n"
+  },
+  "known": [],
+  "expected": {
+   "result": [
+    "A.target"
+   ]
+  },
+  "why": "Term-level open A in affects the nested term, even though no open command has been issued."
+ },
+ {
+  "id": "constructor_lexical_namespace",
+  "files": {
+   "Pkg/File.lean": "import Lean\nnamespace N\ndef T : Type := Nat\ndef I.T : Type := Bool\ninductive I where\n  | build : T → I\ndef A.T : Type := Nat\ndef A.J.T : Type := Bool\ninductive A.J where\n  | build : T → J\nend N\n"
+  },
+  "known": [],
+  "expected": {
+   "N.I.build": [
+    "N.I",
+    "N.T"
+   ],
+   "N.A.J.build": [
+    "N.A.J",
+    "N.A.T"
+   ]
+  },
+  "why": "A constructor type uses the enclosing inductive declaration’s elaboration namespace. The inductive type name is not an additional namespace frame."
+ },
+ {
+  "id": "open_root_exact_dotted_regression",
+  "files": {
+   "Pkg/File.lean": "import Lean\ndef Path.mark : Bool := true\ndef Other.Path.mark : Nat := 0\nopen Other\ntheorem result : Path.mark = true := rfl\n"
+  },
+  "known": [],
+  "expected": {
+   "result": [
+    "Path.mark"
+   ]
+  },
+  "why": "An exact dotted root declaration cuts off open lookups at the same prefix length."
+ },
+ {
+  "id": "literal_type_proj_regression",
+  "files": {
+   "Pkg/File.lean": "import Lean\ntheorem result : (let _ := @Nat.succ.inj; True) := trivial\n"
+  },
+  "known": [
+   "Nat.succ.inj"
+  ],
+  "expected": {
+   "result": [
+    "Nat.succ.inj"
+   ]
+  },
+  "why": "An existing longest full name wins, and @ does not add another dependency."
+ },
+ {
+  "id": "current_longest_regression",
+  "files": {
+   "Pkg/File.lean": "import Lean\ndef a.b : Type := Nat\ndef Outer.Inner.a : Nat := 0\nnamespace Outer.Inner\ndef result : a.b := (0 : Nat)\nend Outer.Inner\n"
+  },
+  "known": [],
+  "expected": {
+   "Outer.Inner.result": [
+    "a.b"
+   ]
+  },
+  "why": "Lean tries a full root name before peeling a component to reach the inner namespace constant."
+ },
+ {
+  "id": "dotted_regular_regression",
+  "files": {
+   "Pkg/File.lean": "import Lean\nnamespace A\ndef T : Type := Nat\ndef Foo.T : Type := Bool\ntheorem Foo.result : (∀ _ : T, True) := fun _ => show True from (fun (_ : T) => trivial) true\nend A\n"
+  },
+  "known": [],
+  "expected": {
+   "A.Foo.result": [
+    "A.Foo.T"
+   ]
+  },
+  "why": "A regular dotted name adds its namespace in the signature and body."
+ },
+ {
+  "id": "explicit_application_regression",
+  "files": {
+   "Pkg/File.lean": "import Lean\ndef singleton {α : Type} (x : α) : List α := [x]\ntheorem result : @singleton Nat 0 = [0] := rfl\n"
+  },
+  "known": [
+   "Nat"
+  ],
+  "expected": {
+   "result": [
+    "Nat",
+    "singleton"
+   ]
+  },
+  "why": "@ uses ordinary name resolution with explicit application mode."
+ },
+ {
+  "id": "local_dotted_regression",
+  "files": {
+   "Pkg/File.lean": "import Lean\ndef x.succ : Bool := false\ntheorem result (x : Nat) : x.succ = x.succ := rfl\n"
+  },
+  "known": [],
+  "expected": {
+   "result": []
+  },
+  "why": "A regular local prefix x wins over the longer global identifier x.value. The local-receiver projection is outside the extractor scope."
+ }
+]

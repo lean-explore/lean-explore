@@ -1,0 +1,433 @@
+[
+ {
+  "id": "membership-binder-domain-bound",
+  "files": {
+   "Pkg/File.lean": "namespace F1\ndef range (n : Nat) : List Nat := List.range n\ndef bound : Nat := 10\ndef P (i : Nat) : Prop := True\ntheorem allP (n : Nat) : ∀ i ∈ range n, P i := fun _ _ => trivial\ntheorem existsBig : ∃ k > bound, P k := ⟨11, by decide, trivial⟩\nend F1\n"
+  },
+  "known": [],
+  "expected": {
+   "F1.allP": [
+    "F1.P",
+    "F1.range"
+   ],
+   "F1.existsBig": [
+    "F1.P",
+    "F1.bound"
+   ]
+  },
+  "why": "_KEYWORD_BINDER captures everything between the quantifier and the comma, so in `∀ i ∈ range n,` / `∃ k > bound,` the domain `range`, `n`, `bound` are treated as bound names and every occurrence of them in the signature is dropped. In Mathlib this hits every `∑ i ∈ range n, ...`, `∀ x ∈ univ`, `⋃ i ∈ Iio n` under `open Finset`/`open Set` (about 2,200 occurrences with unqualified Finset/Set domains)."
+ },
+ {
+  "id": "ascription-head-in-binder-region",
+  "files": {
+   "Pkg/File.lean": "namespace F2\ndef card (α : Type) : Nat := 0\ndef P (n : Nat) : Prop := True\ntheorem cardHyp (α : Type) (h : P (card α : Nat)) : True := trivial\nend F2\n"
+  },
+  "known": [
+   "True"
+  ],
+  "expected": {
+   "F2.cardHyp": [
+    "F2.P",
+    "F2.card",
+    "True"
+   ]
+  },
+  "why": "_BRACKET_BINDER is run over the whole binder region, so the type ascription `(card α : Nat)` inside a hypothesis type is read as a binder `(card α : ...)`; `card` becomes a local name and the constant is never reported. Typical Mathlib form: `(h : (card s : ℝ) ≤ ...)`, `(h : (choose n k : ℚ) = ...)` under `open Finset`/`open Nat`."
+ },
+ {
+  "id": "variable-misparse-section-wide",
+  "files": {
+   "Pkg/File.lean": "namespace F3\ndef card (α : Type) : Nat := 0\ndef P (n : Nat) : Prop := True\nsection\nvariable (α : Type) (hc : P (card α : Nat))\ntheorem usesCard : P (card α) := trivial\nend\nend F3\n"
+  },
+  "known": [
+   "Nat"
+  ],
+  "expected": {
+   "F3.usesCard": [
+    "F3.P",
+    "F3.card"
+   ]
+  },
+  "why": "bound_names() runs the same binder regexes over every `variable` command and adds the result to the scope of the whole section, so one ascription (or one `∀ x ∈ range n`) in a `variable` line suppresses that constant in every later signature of the section, even ones that never use the variable."
+ },
+ {
+  "id": "modifier-letter-postfix-glued",
+  "files": {
+   "Pkg/File.lean": "namespace F4\ndef S : Type := Nat\ndef Op (α : Type) : Type := α\npostfix:max \"ᵒᵖ\" => Op\ndef F (x : Sᵒᵖ) : Nat := 0\nstructure Box where\n  n : Nat\ndef Box.univ : Box := ⟨0⟩\ndef compl (b : Box) : Box := b\npostfix:max \"ᶜ\" => compl\ndef Q (b : Box) : Prop := True\ntheorem complUniv : Q Box.univᶜ := trivial\ndef helper : Nat := 0\ndef inv' (n : Nat) : Nat := n\nprefix:max \"⅟\" => inv'\ndef R (n : Nat) : Prop := True\ntheorem invHelper : R ⅟helper := trivial\nend F4\n"
+  },
+  "known": [
+   "Nat"
+  ],
+  "expected": {
+   "F4.F": [
+    "F4.Op",
+    "F4.S",
+    "Nat"
+   ],
+   "F4.complUniv": [
+    "F4.Box.univ",
+    "F4.Q",
+    "F4.compl"
+   ],
+   "F4.invHelper": [
+    "F4.R",
+    "F4.helper",
+    "F4.inv'"
+   ]
+  },
+  "why": "Python `\\w` accepts modifier letters and number forms (ᵒ ᵖ ᵈ ᶜ ˣ ᵀ ⅟ ²) that are not Lean identifier characters, so `Sᵒᵖ`, `⅟helper` lex as one unknown identifier (S, helper missed) and `Box.univᶜ` falls back to the wrong prefix `Box`. Op/compl/inv' are notation (known limit); S, helper and Box.univ are the bugs. Mathlib: `SimplexCategoryᵒᵖ` (116x), `CommRingCatᵒᵖ`, `Elementsᵒᵖ`, ~270 glued uses after a constant."
+ },
+ {
+  "id": "universe-level-read-as-term",
+  "files": {
+   "Pkg/File.lean": "open Nat\nuniverse u v\ndef Pair (α : Type u) (β : Type v) : Type (max u v) := Prod α β\nnamespace F5\ndef w : Nat := 0\nuniverse w\ndef idS (α : Sort w) : Sort w := α\nend F5\n"
+  },
+  "known": [
+   "Nat",
+   "Nat.max",
+   "Prod"
+  ],
+  "expected": {
+   "Pair": [],
+   "F5.idS": []
+  },
+  "why": "Universe level expressions (`max u v`, `imax`, level names in `Sort w`, `.{u}`) are scanned like terms, so `max` resolves through `open Nat` to `Nat.max` and the level `w` resolves to the constant `F5.w`. Level syntax should be skipped (after `Sort`/`Type` and inside `.{...}`)."
+ },
+ {
+  "id": "keyword-read-as-identifier",
+  "files": {
+   "Pkg/File.lean": "import Lean\nnamespace F6\ndef P (f : Nat → Nat) : Prop := True\nopen Lean.Parser.Term in\ntheorem idP : P (fun (x : Nat) => x) := trivial\nend F6\n"
+  },
+  "known": [
+   "Lean.Parser.Term.fun",
+   "Nat"
+  ],
+  "expected": {
+   "F6.idP": [
+    "F6.P",
+    "Nat"
+   ]
+  },
+  "why": "Keywords (`fun`, `match`, `show`, `have`, `let`, `do`, `sorry`) are not excluded from _IDENTIFIER, so with `open Lean.Parser.Term` the keyword `fun` resolves to the parser constant `Lean.Parser.Term.fun`. Affects meta files that open Lean parser namespaces."
+ },
+ {
+  "id": "name-literal-read-as-reference",
+  "files": {
+   "Pkg/File.lean": "namespace F7\ndef nm : Nat := 0\ndef P (n : Lean.Name) : Prop := True\ntheorem quoted : P `nm := trivial\ntheorem dquoted : P ``nm := trivial\nend F7\n"
+  },
+  "known": [
+   "Lean.Name",
+   "Nat"
+  ],
+  "expected": {
+   "F7.quoted": [
+    "F7.P"
+   ],
+   "F7.dquoted": [
+    "F7.P"
+   ]
+  },
+  "why": "Name literals `` `nm `` and ``` ``nm ``` elaborate to `Lean.Name.mkStr ...` and do not mention the constant, but the backtick is not in the identifier lookbehind, so `nm` is reported as a dependency."
+ },
+ {
+  "id": "char-literal-punctuation",
+  "files": {
+   "Pkg/File.lean": "namespace F8\ndef T : Type := Nat\ndef helper : T := (0 : Nat)\ndef P (a : T) : Prop := True\ndef IsQuote (c : Char) : Prop := c = '\"'\ndef IsOpen (c : Char) : Prop := c = '('\ntheorem q1 : IsQuote '\"' ∧ P helper ∧ \"a\" = \"a\" := ⟨rfl, trivial, rfl⟩\ntheorem q2 (h : IsOpen '(') : P (helper : T) ∧ ∀ (z : T), P z := ⟨trivial, fun _ => trivial⟩\nend F8\n"
+  },
+  "known": [],
+  "expected": {
+   "F8.q1": [
+    "F8.IsQuote",
+    "F8.P",
+    "F8.helper"
+   ],
+   "F8.q2": [
+    "F8.IsOpen",
+    "F8.P",
+    "F8.T",
+    "F8.helper"
+   ]
+  },
+  "why": "Char literals are not lexed: `'\"'` opens a fake string that runs to the next real string and hides `P helper` (q1); `'('` shifts the bracket depth in _before_type so the whole type is treated as binder region and the ascription `(helper : T)` binds `helper` (q2). Same root as known bug 12 but the symptom is missed references, not leaked words."
+ },
+ {
+  "id": "autoparam-tactic-read-as-term",
+  "files": {
+   "Pkg/File.lean": "namespace F9\ndef T : Type := Nat\ndef helper : T := (0 : Nat)\ndef P (a : T) : Prop := True\ntheorem pHelper : P helper := trivial\ntheorem usesAuto (h : P helper := by exact pHelper) : True := trivial\nend F9\n"
+  },
+  "known": [
+   "True"
+  ],
+  "expected": {
+   "F9.usesAuto": [
+    "F9.P",
+    "F9.helper",
+    "True"
+   ]
+  },
+  "why": "An autoParam default `:= by ...` is tactic syntax stored as a quoted syntax tree; the lemma it names (`pHelper`) is not a constant of the elaborated type, but the tactic block is scanned like a term and `pHelper` is reported."
+ },
+ {
+  "id": "ctor-without-written-result-type",
+  "files": {
+   "Pkg/File.lean": "namespace F10\ndef T : Type := Nat\ninductive Color where\n  | red\n  | green\ninductive Opt (α : Type) where\n  | none\n  | some (a : α)\ninductive Tag where\n  | make (n : T)\nend F10\n"
+  },
+  "known": [],
+  "expected": {
+   "F10.Color.red": [
+    "F10.Color"
+   ],
+   "F10.Color.green": [
+    "F10.Color"
+   ],
+   "F10.Opt.none": [
+    "F10.Opt"
+   ],
+   "F10.Opt.some": [
+    "F10.Opt"
+   ],
+   "F10.Tag.make": [
+    "F10.T",
+    "F10.Tag"
+   ]
+  },
+  "why": "A constructor written without `: Result` has the inductive (applied to its parameters) as result type, but its signature_text is only `| red` / `| some (a : α)`, so the inductive itself is never reported (about 260 such constructor lines in Mathlib)."
+ },
+ {
+  "id": "custom-structure-constructor",
+  "files": {
+   "Pkg/File.lean": "namespace F11\ndef T : Type := Nat\nstructure Pt where\n  make ::\n  x : T\n  y : T\nend F11\n"
+  },
+  "known": [],
+  "expected": {
+   "F11.Pt.make": [
+    "F11.Pt",
+    "F11.T"
+   ]
+  },
+  "why": "For a structure with a named constructor `make ::` the stored constructor's signature_text is just `make ::`; its type `T → T → Pt` (fields and structure) is never read, so it gets no dependencies."
+ },
+ {
+  "id": "extends-parents-not-in-type",
+  "files": {
+   "Pkg/File.lean": "namespace F12\nclass Base (α : Type) where\n  b : α\nstructure Raw where\n  n : Nat\nstructure Ext extends Raw where\n  m : Nat\nclass Derived (α : Type) extends Base α where\n  d : α\nend F12\n"
+  },
+  "known": [
+   "Nat"
+  ],
+  "expected": {
+   "F12.Ext": [],
+   "F12.Derived": []
+  },
+  "why": "The structure/class signature_text includes the `extends` clause, so parents are reported, but the elaborated type of `Ext` is `Type` and of `Derived` is `Type → Type` (doc-gen4 stores parents in a separate structure_parents table, not in name_info.type). ~550 `extends` headers in Mathlib."
+ },
+ {
+  "id": "alias-signature-is-target-name",
+  "files": {
+   "Pkg/File.lean": "import Batteries.Tactic.Alias\nnamespace F13\ndef T : Type := Nat\ndef P (a : T) : Prop := True\ntheorem pAll (x : T) : P x := trivial\n@[deprecated pAll (since := \"2024-01-01\")] alias pAll_old := pAll\nend F13\n"
+  },
+  "known": [],
+  "expected": {
+   "F13.pAll_old": [
+    "F13.P",
+    "F13.T"
+   ]
+  },
+  "why": "`alias new := old` gets signature_text `alias pAll_old := pAll`, so its dependency is the target name, while its elaborated type is the target's type (`∀ x : T, P x`). Mathlib has ~6,100 `alias` lines, mostly deprecated aliases. Needs Batteries (verified with v4.37.0-rc1 + Batteries oleans on the box)."
+ },
+ {
+  "id": "section-variable-types-missing",
+  "files": {
+   "Pkg/File.lean": "namespace F14\ndef Carrier : Type := Nat\nclass Mag (α : Type) where\n  op : α → α → α\ndef P (c : Carrier) : Prop := True\ndef Q {α : Type} [Mag α] (a : α) : Prop := True\nsection\nvariable (c : Carrier) {α : Type} [Mag α]\ntheorem usesC : P c := trivial\ntheorem usesInst (a : α) : Q a := trivial\nend\nend F14\n"
+  },
+  "known": [],
+  "expected": {
+   "F14.usesC": [
+    "F14.Carrier",
+    "F14.P"
+   ],
+   "F14.usesInst": [
+    "F14.Mag",
+    "F14.Q"
+   ]
+  },
+  "why": "Section variables that a declaration uses become binders of its elaborated type, but only the declaration's own text is scanned; FileScopes keeps the variable names (to suppress them) and drops their types, so `Carrier` and the instance class `Mag` are missed. This is the common Mathlib shape (`variable {R : Type*} [CommRing R] ...`)."
+ },
+ {
+  "id": "command-bodies-in-signature",
+  "files": {
+   "Pkg/File.lean": "import Lean\nnamespace F15\ndef helper (n : Nat) : Nat := n\ndef defaultFlag : Bool := false\nmacro (name := myMac) \"mymac\" x:term : term => `(helper $x)\ninitialize myRef : IO.Ref Nat ← IO.mkRef (helper 0)\nregister_option myOpt : Bool := { defValue := defaultFlag }\nsimproc_decl mySimproc (helper _) := fun _ => do return .continue\nend F15\n"
+  },
+  "known": [
+   "Bool",
+   "IO.Ref",
+   "Nat"
+  ],
+  "expected": {
+   "F15.myMac": [],
+   "F15.myRef": [
+    "IO.Ref",
+    "Nat"
+   ],
+   "F15.myOpt": [
+    "Bool"
+   ],
+   "F15.mySimproc": []
+  },
+  "why": "For non-def commands the signature_text runs past the type: `macro`/`elab`/`notation` include the `=> expansion`, `initialize` the `← initializer`, `register_option` the `:= {defValue := ...}` record, `simproc_decl` its match pattern (and `unif_hint` its `where` body). Constants used only there are reported although the elaborated types are `Lean.ParserDescr`, `IO.Ref Nat`, `Lean.Option Bool`, `Lean.Meta.Simp.Simproc`."
+ },
+ {
+  "id": "ctor-resolved-in-own-namespace",
+  "files": {
+   "Pkg/File.lean": "namespace F16\ndef leaf : Nat := 0\ndef Wrap (n : Nat) : Type := Nat\ninductive Tree where\n  | leaf : Tree\n  | node : Wrap leaf → Tree\nend F16\n"
+  },
+  "known": [
+   "Nat"
+  ],
+  "expected": {
+   "F16.Tree.node": [
+    "F16.Tree",
+    "F16.Wrap",
+    "F16.leaf"
+   ]
+  },
+  "why": "Resolution namespaces come from the declaration name, so for constructor `F16.Tree.node` the identifier `leaf` resolves to the sibling constructor `F16.Tree.leaf`; Lean elaborates constructor types in the enclosing namespace and uses `F16.leaf`."
+ },
+ {
+  "id": "leading-dot-identifier-dropped",
+  "files": {
+   "Pkg/File.lean": "namespace F17\ninductive Color where\n  | red\n  | green\ndef red : Nat := 0\ndef P (c : Color) : Prop := True\ntheorem isRed : P .red := trivial\nend F17\n"
+  },
+  "known": [
+   "Nat"
+  ],
+  "expected": {
+   "F17.isRed": [
+    "F17.Color.red",
+    "F17.P"
+   ]
+  },
+  "why": "Borderline (resolution by expected type): `.red` is skipped because of the `.` lookbehind, so `Color.red` is missed. Good: no false `F17.red`. A cheap approximation would resolve `.x` against `X.x` for types X written in the signature."
+ },
+ {
+  "id": "regression-numeric-literals",
+  "files": {
+   "Pkg/File.lean": "namespace R1\ndef e10 : Nat := 0\ndef xFF : Nat := 0\ndef b101 : Nat := 0\ndef P (a : Nat) : Prop := True\ndef PF (x : Float) : Prop := True\ntheorem num : PF 1e10 ∧ P 0xFF ∧ P 0b101 ∧ PF 2.5e-3 ∧ P 1000000 := ⟨trivial, trivial, trivial, trivial, trivial⟩\nend R1\n"
+  },
+  "known": [],
+  "expected": {
+   "R1.num": [
+    "R1.P",
+    "R1.PF"
+   ]
+  },
+  "why": "Scientific/hex/binary literals must not yield `e10`, `xFF`, `b101` (lookbehind on a preceding word character)."
+ },
+ {
+  "id": "regression-unicode-identifiers",
+  "files": {
+   "Pkg/File.lean": "namespace R2\ndef T : Type := Nat\ndef P (a : T) : Prop := True\ndef ζ₁ : T := (0 : Nat)\ndef ℓ : T := (0 : Nat)\ndef 𝓐 : T := (0 : Nat)\ndef get! : T := (0 : Nat)\ndef find? : T := (0 : Nat)\ndef x'₂ : T := (0 : Nat)\ndef αᵢ : T := (0 : Nat)\ntheorem uni : P ζ₁ ∧ P ℓ ∧ P 𝓐 ∧ P get! ∧ P find? ∧ P x'₂ ∧ P αᵢ := ⟨trivial, trivial, trivial, trivial, trivial, trivial, trivial⟩\nend R2\n"
+  },
+  "known": [],
+  "expected": {
+   "R2.uni": [
+    "R2.P",
+    "R2.find?",
+    "R2.get!",
+    "R2.x'₂",
+    "R2.αᵢ",
+    "R2.ζ₁",
+    "R2.ℓ",
+    "R2.𝓐"
+   ]
+  },
+  "why": "Greek, subscripts (₁, ᵢ), primes, trailing !/?, letterlike ℓ and script 𝓐 identifiers are recognised."
+ },
+ {
+  "id": "regression-adjacent-punctuation",
+  "files": {
+   "Pkg/File.lean": "namespace R3\ndef T : Type := Nat\ndef P (a : T) : Prop := True\ndef PP (a : T × T) : Prop := True\ndef helper : T := (0 : Nat)\ndef pair : T × T := (helper, helper)\nuniverse u\ndef idS (α : Sort u) : Sort u := α\ndef PS (α : Sort 1) : Prop := True\ntheorem adj (x : T) : P (helper) ∧ P (@helper) ∧ PP ⟨helper, x⟩ ∧ P pair.1 ∧ P pair.2 ∧ PS (idS.{1} T) :=\n  ⟨trivial, trivial, trivial, trivial, trivial, trivial⟩\nend R3\n"
+  },
+  "known": [],
+  "expected": {
+   "R3.adj": [
+    "R3.P",
+    "R3.PP",
+    "R3.PS",
+    "R3.T",
+    "R3.helper",
+    "R3.idS",
+    "R3.pair"
+   ]
+  },
+  "why": "Identifiers inside (), @, ⟨⟩, numeric projections `.1`/`.2` and explicit universes `.{1}` are found."
+ },
+ {
+  "id": "regression-comments-strings-attributes",
+  "files": {
+   "Pkg/File.lean": "namespace R4\ndef T : Type := Nat\ndef old : T := (0 : Nat)\ndef unrelated : T := (0 : Nat)\ndef P (a : T) (s : String) : Prop := True\n/-- Mentions `unrelated` and old. -/\n@[deprecated old (since := \"2024-01-01\")]\ntheorem t (x : T) -- unrelated\n    /- block: unrelated : T -/ : P x \"unrelated -- /- old \\\" old\" := trivial\nend R4\n"
+  },
+  "known": [],
+  "expected": {
+   "R4.t": [
+    "R4.P",
+    "R4.T"
+   ]
+  },
+  "why": "Docstrings, attributes, line and block comments and strings containing `--`, `/-` and escaped quotes contribute nothing."
+ },
+ {
+  "id": "regression-where-deriving-bodies",
+  "files": {
+   "Pkg/File.lean": "namespace R5\ndef T : Type := Nat\ndef helper : T := (0 : Nat)\ninstance inst : Inhabited T where\n  default := helper\ninductive I where\n  | a (n : T) : I\n  deriving Inhabited\ndef f (n : Nat) : T := helper\nend R5\n"
+  },
+  "known": [],
+  "expected": {
+   "R5.inst": [
+    "R5.T"
+   ],
+   "R5.I.a": [
+    "R5.I",
+    "R5.T"
+   ],
+   "R5.f": [
+    "R5.T"
+   ]
+  },
+  "why": "`where` bodies, `deriving` clauses and `:=` bodies are outside the signature."
+ },
+ {
+  "id": "regression-optparam-and-shadowing",
+  "files": {
+   "Pkg/File.lean": "namespace R6\ndef T : Type := Nat\ndef helper : T := (0 : Nat)\ndef P (a : T) : Prop := True\ntheorem opt (x : T := helper) : P x := trivial\ntheorem shadow (helper : T) : P helper := trivial\nend R6\n"
+  },
+  "known": [],
+  "expected": {
+   "R6.opt": [
+    "R6.P",
+    "R6.T",
+    "R6.helper"
+   ],
+   "R6.shadow": [
+    "R6.P",
+    "R6.T"
+   ]
+  },
+  "why": "A binder default value is part of the type (optParam) and is found; a binder that shadows a constant suppresses it."
+ },
+ {
+  "id": "perf-keyword-binder-whitespace-cubic",
+  "files": {
+   "Pkg/File.lean": "theorem slow (hfun : True) (h : hfun                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                = hfun) : True := trivial\n"
+  },
+  "known": [
+   "True"
+  ],
+  "expected": {
+   "slow": [
+    "True"
+   ]
+  },
+  "why": "_KEYWORD_BINDER `\\s+([^,:=⇒]*?)\\s*(?:,|:|=>|↦)`: when the match fails (group hits `=` not followed by `>`), the greedy `\\s+`, the lazy group and the trailing `\\s*` all re-partition the same whitespace run, giving O(N^3) in the run length after a binder keyword (8x per doubling), and O(K·L) for K keywords without terminator. Correct output, harmless at real indentation widths (<1 ms below ~50 spaces); only pathological formatting triggers it. Fix: make the group start with a non-space (`\\s+(\\S[^,:=⇒]*?)?`) or use a possessive/atomic match."
+ }
+]

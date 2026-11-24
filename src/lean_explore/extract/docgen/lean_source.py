@@ -122,6 +122,29 @@ def read_source_lines(file_path: str | Path, line_start: int, line_end: int) -> 
     file_path = Path(file_path)
     with open(file_path, encoding="utf-8") as f:
         lines = f.readlines()
+    return select_source_lines(lines, line_start, line_end, file_path)
+
+
+def select_source_lines(
+    lines: list[str], line_start: int, line_end: int, file_path: str | Path
+) -> str:
+    """Select a declaration's lines from a file that has already been read.
+
+    If the selected text is just an attribute (like @[to_additive]), extends
+    the range to include the full declaration, as ``read_source_lines`` does.
+
+    Args:
+        lines: The file's lines, with line endings, as ``readlines`` returns them.
+        line_start: First line to select (1-based, inclusive).
+        line_end: Last line to select (1-based, inclusive).
+        file_path: Path of the file, used in the error message.
+
+    Returns:
+        The source text for the requested line range.
+
+    Raises:
+        ValueError: If the line range is out of bounds for the file.
+    """
     if line_start > len(lines) or line_end > len(lines):
         raise ValueError(
             f"Line range {line_start}-{line_end} out of bounds for {file_path}"

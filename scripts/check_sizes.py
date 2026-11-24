@@ -21,6 +21,8 @@ from pathlib import Path
 MAX_FILE_LINES = 500
 MAX_FUNCTION_CODE_LINES = 40
 DEFAULT_PATHS = ("src", "tests", "scripts")
+EXCLUDED_DIRECTORIES = (Path("src/lean_explore/parser"),)
+"""Separate workspaces that are not part of the Python package."""
 _NON_CODE_TOKENS = {
     tokenize.COMMENT,
     tokenize.NL,
@@ -82,7 +84,10 @@ def main() -> int:
     args = parser.parse_args()
 
     files = sorted(
-        file for path in map(Path, args.paths) for file in path.rglob("*.py")
+        file
+        for path in map(Path, args.paths)
+        for file in path.rglob("*.py")
+        if not any(file.is_relative_to(excluded) for excluded in EXCLUDED_DIRECTORIES)
     )
     violations = []
     for file in files:

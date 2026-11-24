@@ -4,6 +4,9 @@ This module orchestrates extraction: for every package workspace it detects
 the doc-gen4 output format, parses declarations (reading their Lean source
 text), filters auto-generated projections, and inserts the result.
 
+Packages configured with ``ExtractionMethod.SOURCE`` are read from their
+unbuilt sources instead (see :mod:`lean_explore.extract.source.reader`).
+
 Supports two doc-gen4 output formats:
 - SQLite database (api-docs.db): Used by doc-gen4 >= v4.29.0-rc2
   (see :mod:`lean_explore.extract.docgen.sqlite_reader`)
@@ -12,6 +15,7 @@ Supports two doc-gen4 output formats:
 """
 
 import logging
+from collections.abc import Collection
 from pathlib import Path
 
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession
@@ -29,6 +33,8 @@ from lean_explore.extract.docgen.sqlite_reader import (
     validate_docgen_sqlite,
 )
 from lean_explore.extract.docgen.writer import insert_declarations_batch
+from lean_explore.extract.packages.config import ExtractionMethod
+from lean_explore.extract.source.reader import extract_source_package
 from lean_explore.extract.types import Declaration
 
 logger = logging.getLogger(__name__)
@@ -78,20 +84,26 @@ def _detect_docgen_format(workspace_path: Path) -> str:
     return "none"
 
 
-def _extract_package(lean_root: Path, package_name: str) -> list[Declaration]:
+def _extract_package(
+    lean_root: Path, package_name: str, known_names: Collection[str] = ()
+) -> list[Declaration]:
     """Extract the declarations of one package workspace.
 
     Args:
         lean_root: Root directory containing the package workspaces.
         package_name: Registry name of the package (and its workspace).
+        known_names: Names extracted from earlier packages, which a source
+            package's signatures can refer to.
 
     Returns:
         The package's declarations, or an empty list if the workspace has no
-        doc-gen4 output.
+        doc-gen4 output (or, for a source package, no fetched sources).
     """
     from lean_explore.extract.packages.registry import PACKAGE_REGISTRY
 
     package_config = PACKAGE_REGISTRY[package_name]
+    if package_config.extraction is ExtractionMethod.SOURCE:
+        return extract_source_package(lean_root, package_config, known_names)
     workspace_path = lean_root / package_name
     docgen_format = _detect_docgen_format(workspace_path)
 
@@ -147,9 +159,12 @@ def _extract_all_packages(lean_root: Path) -> list[Declaration]:
     """
     from lean_explore.extract.packages.workspace import get_extraction_order
 
-    all_declarations = []
+    all_declarations: list[Declaration] = []
+    known_names: set[str] = set()
     for package_name in get_extraction_order():
-        all_declarations.extend(_extract_package(lean_root, package_name))
+        declarations = _extract_package(lean_root, package_name, known_names)
+        known_names.update(declaration.name for declaration in declarations)
+        all_declarations.extend(declarations)
 
     if not all_declarations:
         raise FileNotFoundError("No declarations extracted from any package workspace")

@@ -1,0 +1,110 @@
+# Dependencies that are left out of informalization prompts.
+#
+# These names appear in a large share of all statements and stand for things
+# a language model already knows: equality, the logical connectives, the
+# arithmetic and order operators, and the basic data types. Describing them
+# in a prompt spends tokens without adding context.
+#
+# One name per line. Lines starting with "#" and blank lines are ignored.
+
+# Logic and equality
+Eq
+Ne
+HEq
+Iff
+And
+Or
+Not
+Exists
+True
+False
+Nonempty
+Inhabited
+Inhabited.default
+Decidable
+ite
+dite
+id
+Function.comp
+Function.Injective
+Function.Surjective
+Function.Bijective
+
+# Arithmetic operators
+HAdd.hAdd
+HSub.hSub
+HMul.hMul
+HDiv.hDiv
+HMod.hMod
+HPow.hPow
+HSMul.hSMul
+HVAdd.hVAdd
+HAppend.hAppend
+Neg.neg
+Inv.inv
+Dvd.dvd
+Zero.zero
+One.one
+OfNat.ofNat
+
+# Order, membership and set operations
+LE.le
+LT.lt
+GE.ge
+GT.gt
+Max.max
+Min.min
+Top.top
+Bot.bot
+Membership.mem
+HasSubset.Subset
+Union.union
+Inter.inter
+SDiff.sdiff
+Compl.compl
+Insert.insert
+Singleton.singleton
+EmptyCollection.emptyCollection
+SProd.sprod
+BEq.beq
+Ordering.eq
+Ordering.isLE
+
+# Basic types, with their constructors and accessors
+Nat
+Int
+Bool
+Bool.true
+Bool.false
+Fin
+Unit
+String
+Char
+Prod
+Prod.mk
+Prod.fst
+Prod.snd
+Sigma.fst
+Sigma.snd
+Option
+Option.some
+Option.none
+Option.isSome
+List
+List.cons
+List.nil
+List.length
+List.map
+Array
+Subtype
+Subtype.val
+Subtype.mk
+GetElem.getElem
+GetElem?.getElem?
+
+# Ubiquitous Mathlib types
+Real
+Complex
+Set
+Set.univ
+Set.ofPred

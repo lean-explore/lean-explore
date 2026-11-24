@@ -8,12 +8,15 @@ layer's results are made available to the next.
 import asyncio
 import logging
 from dataclasses import dataclass
+from functools import cache
+from pathlib import Path
 
 from rich.progress import Progress, TaskID
 from sqlalchemy import update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from lean_explore.extract.informalize.dependency_layers import parse_dependencies
+from lean_explore.extract.informalize.statement import statement_text
 from lean_explore.extract.progress import create_progress
 from lean_explore.models import Declaration
 from lean_explore.util import OpenRouterClient
@@ -21,13 +24,20 @@ from lean_explore.util import OpenRouterClient
 logger = logging.getLogger(__name__)
 
 MAX_PROMPT_DEPENDENCIES = 20
-"""Only the first this-many dependencies are considered for prompt context."""
+"""At most this many dependencies are described in a prompt."""
 
 MAX_DEPENDENCY_DESCRIPTION_LENGTH = 256
 """Dependency descriptions longer than this are truncated with an ellipsis."""
 
+COMMON_DEPENDENCIES_PATH = Path(__file__).parent / "common_dependencies.txt"
+"""File listing dependencies that every prompt leaves out."""
+
 InformalizationCache = dict[tuple[str, str], str]
-"""Map of (declaration name, source text) to a previously generated description."""
+"""Map of (declaration name, statement text) to an earlier description.
+
+The statement text is the declaration's source without the proof of a
+theorem; see ``statement_text``.
+"""
 
 
 # --- Data Classes ---
@@ -53,6 +63,11 @@ class DeclarationData:
     dependencies: str | None
     informalization: str | None
 
+    @property
+    def statement(self) -> str:
+        """The source that the description depends on, without a proof."""
+        return statement_text(self.source_text)
+
     @classmethod
     def from_declaration(cls, declaration: Declaration) -> "DeclarationData":
         """Copy the fields needed for informalization out of an ORM object.
@@ -76,23 +91,45 @@ class DeclarationData:
 # --- Processing Functions ---
 
 
+@cache
+def common_dependencies() -> frozenset[str]:
+    """Return the dependency names that prompts leave out.
+
+    They are names such as ``Eq`` and ``HAdd.hAdd`` that occur in a large share
+    of statements and that a language model already knows.
+
+    Returns:
+        The names listed in ``common_dependencies.txt``.
+    """
+    lines = COMMON_DEPENDENCIES_PATH.read_text(encoding="utf-8").splitlines()
+    names = (line.strip() for line in lines)
+    return frozenset(name for name in names if name and not name.startswith("#"))
+
+
 def format_dependencies(
     dependencies: str | list[str] | None, informalizations_by_name: dict[str, str]
 ) -> str:
     """Format known dependency descriptions as prompt context.
+
+    Common dependencies and dependencies without a description are skipped;
+    the first MAX_PROMPT_DEPENDENCIES of the rest are listed.
 
     Args:
         dependencies: Dependency names as JSON string, list, or None.
         informalizations_by_name: Map of declaration names to informalizations.
 
     Returns:
-        "Dependencies:" followed by one line per described dependency, or ""
-        when none of the first MAX_PROMPT_DEPENDENCIES are described.
+        "Dependencies:" followed by one line per listed dependency, or "" when
+        there is none.
     """
+    skipped = common_dependencies()
+    described = [
+        name
+        for name in parse_dependencies(dependencies)
+        if name not in skipped and name in informalizations_by_name
+    ]
     lines = []
-    for name in parse_dependencies(dependencies)[:MAX_PROMPT_DEPENDENCIES]:
-        if name not in informalizations_by_name:
-            continue
+    for name in described[:MAX_PROMPT_DEPENDENCIES]:
         description = informalizations_by_name[name]
         if len(description) > MAX_DEPENDENCY_DESCRIPTION_LENGTH:
             description = description[: MAX_DEPENDENCY_DESCRIPTION_LENGTH - 3] + "..."
@@ -117,7 +154,7 @@ def build_prompt(
     """
     return prompt_template.format(
         name=declaration_data.name,
-        source_text=declaration_data.source_text,
+        source_text=declaration_data.statement,
         docstring=declaration_data.docstring or "No docstring available",
         dependencies=format_dependencies(
             declaration_data.dependencies, informalizations_by_name
@@ -143,7 +180,7 @@ async def process_one_declaration(
         model: Model name to use
         prompt_template: Prompt template string
         informalizations_by_name: Map of declaration names to informalizations
-        cache: Map of (name, source_text) to cached informalizations
+        cache: Map of (name, statement text) to cached informalizations
         semaphore: Concurrency control semaphore
 
     Returns:
@@ -162,7 +199,7 @@ async def process_one_declaration(
     if declaration_data.informalization is not None:
         return result(None)
 
-    cache_key = (declaration_data.name, declaration_data.source_text)
+    cache_key = (declaration_data.name, declaration_data.statement)
     if cache_key in cache:
         return result(cache[cache_key])
 

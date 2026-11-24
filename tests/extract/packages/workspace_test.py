@@ -3,7 +3,11 @@
 import pytest
 
 from lean_explore.extract.packages import workspace
-from lean_explore.extract.packages.config import PackageConfig, VersionStrategy
+from lean_explore.extract.packages.config import (
+    ExtractionMethod,
+    PackageConfig,
+    VersionStrategy,
+)
 from lean_explore.extract.packages.registry import PACKAGE_REGISTRY
 from lean_explore.extract.packages.workspace import (
     get_extraction_order,
@@ -65,11 +69,22 @@ class TestPackageConfig:
             assert set(config.depends_on) <= set(PACKAGE_REGISTRY)
 
     def test_physlean_uses_upstream_module_roots(self):
-        """PhysLean filters on the upstream module roots."""
+        """PhysLean filters on the upstream module roots, without its scripts."""
         assert PACKAGE_REGISTRY["physlean"].module_prefixes == [
             "Physlib",
+            "PhyslibAlpha",
             "QuantumInfo",
         ]
+
+    def test_registry_packages_are_extracted_from_source(self):
+        """No registered package needs a build."""
+        for config in PACKAGE_REGISTRY.values():
+            assert config.extraction is ExtractionMethod.SOURCE
+
+    def test_lean_modules_are_below_src(self):
+        """Lean keeps its own modules in a subdirectory of its repository."""
+        assert PACKAGE_REGISTRY["lean"].source_subdirectory == "src"
+        assert PACKAGE_REGISTRY["mathlib"].source_subdirectory == ""
 
 
 class TestExtractionOrder:

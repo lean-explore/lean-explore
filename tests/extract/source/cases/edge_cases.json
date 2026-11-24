@@ -1,0 +1,375 @@
+[
+ {
+  "id": "unimported-files-form-false-cycle",
+  "files": {
+   "Base.lean": "def X := Type\ndef Y := Type\n",
+   "A.lean": "import Base\nnamespace N\naxiom X : Y\naxiom After : X\nend N\n",
+   "B.lean": "import Base\nnamespace N\naxiom Y : X\nend N\n"
+  },
+  "known": [
+   "X",
+   "Y"
+  ],
+  "expected": {
+   "N.X": [
+    "Y"
+   ],
+   "N.After": [
+    "N.X"
+   ],
+   "N.Y": [
+    "X"
+   ]
+  },
+  "why": "Each source module imports Base and has no visibility into the other source module. Package-wide lookup chooses the other module's more specific name. This puts N.After in the same dependency layer as N.X and deprives it of an earlier layer for its prerequisite."
+ },
+ {
+  "id": "unrelated-earlier-package-changes-ranking",
+  "files": {
+   "Base.lean": "axiom T : Type\n",
+   "Peer.lean": "axiom N.T : Type\n",
+   "Use.lean": "import Base\nnamespace N\naxiom f : T\nend N\n"
+  },
+  "known": [
+   "N.T",
+   "T"
+  ],
+  "expected": {
+   "N.f": [
+    "T"
+   ]
+  },
+  "why": "The source package imports Base and declares Base as its sole package dependency. The extraction loop also passes N.T from the earlier independent Peer package. The real search ranker gives N.T the dependency boost earned by T."
+ },
+ {
+  "id": "duplicate-name-uses-unimported-definition",
+  "files": {
+   "A.lean": "axiom T : Nat\n",
+   "B.lean": "axiom T : Bool\n",
+   "Use.lean": "import B\naxiom f : T = true\n"
+  },
+  "known": [
+   "Bool",
+   "Bool.true",
+   "Eq",
+   "Nat"
+  ],
+  "expected": {
+   "T": [
+    "Bool"
+   ],
+   "f": [
+    "T"
+   ]
+  },
+  "why": "A and B independently define T. Use imports B, where T has type Bool. The reader keeps the lexicographically first row, from A, so the edge from f reaches the Nat declaration. The expected T row describes the declaration visible from Use."
+ },
+ {
+  "id": "qualified-field-falls-back-to-structure",
+  "files": {
+   "Pkg/File.lean": "structure S where\n  x : Type\naxiom s : S\naxiom f : S.x s\n"
+  },
+  "known": [],
+  "expected": {
+   "f": [
+    "S.x",
+    "s"
+   ]
+  },
+  "why": "S.x is written as a fully qualified constant. The reader excludes field records from its name index and retries the unresolved identifier as S."
+ },
+ {
+  "id": "explicit-mk-axiom-dropped",
+  "files": {
+   "Pkg/File.lean": "axiom A.mk : Type\naxiom f : A.mk\n"
+  },
+  "known": [],
+  "expected": {
+   "A.mk": [],
+   "f": [
+    "A.mk"
+   ]
+  },
+  "why": "The suffix test for generated constructors drops the ordinary axiom A.mk. Lean defines A.mk and uses it as the type of f."
+ },
+ {
+  "id": "protected-name-visible-only-when-qualified",
+  "files": {
+   "Pkg/File.lean": "axiom T : Type\nnamespace A\nprotected axiom T : Type\naxiom f : T\nend A\n"
+  },
+  "known": [],
+  "expected": {
+   "A.f": [
+    "T"
+   ]
+  },
+  "why": "Lean excludes protected A.T from unqualified lookup even inside namespace A. The reader discards the protected modifier when building the name index."
+ },
+ {
+  "id": "newline-before-in-leaks-open",
+  "files": {
+   "Pkg/File.lean": "axiom A.T : Type\nopen A\nin\naxiom f : T\naxiom g : T\n"
+  },
+  "known": [],
+  "expected": {
+   "f": [
+    "A.T"
+   ],
+   "g": []
+  },
+  "why": "Lean scopes the open to f across the newline before in. The extractor tests for a literal space before in and leaves A open for g, whose T is an implicit parameter in Lean."
+ },
+ {
+  "id": "constructor-incorrectly-searches-inductive-namespace",
+  "files": {
+   "Pkg/File.lean": "axiom T : Type\naxiom I.T : Type\ninductive I where\n  | k : T → I\n"
+  },
+  "known": [],
+  "expected": {
+   "I.k": [
+    "I",
+    "T"
+   ]
+  },
+  "why": "The constructor argument type resolves T in the surrounding namespace. The extractor treats the stored name I.k as its lookup context and chooses I.T."
+ },
+ {
+  "id": "section-variable-type-dependencies-lost",
+  "files": {
+   "Pkg/File.lean": "axiom T : Type\nvariable (α : T)\naxiom P : T → Prop\naxiom f : P α\n"
+  },
+  "known": [],
+  "expected": {
+   "f": [
+    "P",
+    "T"
+   ]
+  },
+  "why": "Using α abstracts over a parameter of type T in the declaration's type. FileScopes remembers the section variable's name and loses its explicitly written binder type."
+ },
+ {
+  "id": "generated-ext-theorems-read-attribute-as-type",
+  "files": {
+   "Pkg/File.lean": "import Lean\n@[ext] structure S where\n  a : Nat\n"
+  },
+  "known": [
+   "Eq",
+   "Iff",
+   "Nat"
+  ],
+  "expected": {
+   "S.ext": [
+    "Eq",
+    "Nat",
+    "S",
+    "S.a"
+   ],
+   "S.ext_iff": [
+    "Eq",
+    "Iff",
+    "Nat",
+    "S",
+    "S.a"
+   ]
+  },
+  "why": "Both generated rows receive the signature text ext. The extractor records a reference to S.ext from S.ext_iff, while Lean's generated type uses S, Iff, Eq, Nat and the projection S.a."
+ },
+ {
+  "id": "inline-deriving-leaks-into-constructor",
+  "files": {
+   "Pkg/File.lean": "inductive I where | k : I deriving Inhabited\n"
+  },
+  "known": [
+   "Inhabited"
+  ],
+  "expected": {
+   "I.k": [
+    "I"
+   ]
+  },
+  "why": "The Rust scanner includes deriving Inhabited in the constructor signature when deriving shares the constructor's line. Lean's constructor type is I."
+ },
+ {
+  "id": "implicit-constructor-result-lost",
+  "files": {
+   "Pkg/File.lean": "inductive I where\n  | k\n"
+  },
+  "known": [],
+  "expected": {
+   "I.k": [
+    "I"
+   ]
+  },
+  "why": "A nullary constructor can omit its result type. The parser hands over | k and the reader does not recover the parent result type I."
+ },
+ {
+  "id": "qualified-declaration-id-counted-as-a-reference",
+  "files": {
+   "Pkg/File.lean": "axiom A.A.f : Type\naxiom A.f : Type\n"
+  },
+  "known": [],
+  "expected": {
+   "A.f": []
+  },
+  "why": "The declaration ID A.f is scanned as a term in A.f's own type. Prefixing it with A matches the previously declared A.A.f, although the entire type is Type."
+ },
+ {
+  "id": "named-argument-label-counted-as-a-constant",
+  "files": {
+   "Pkg/File.lean": "axiom arg : Type\naxiom F (arg : Type) : Type\naxiom f : F (arg := Nat)\n"
+  },
+  "known": [
+   "Nat"
+  ],
+  "expected": {
+   "f": [
+    "F",
+    "Nat"
+   ]
+  },
+  "why": "The arg in (arg := Nat) labels F's parameter. Looking it up as a term adds the unrelated axiom arg."
+ },
+ {
+  "id": "universe-level-counted-as-a-term",
+  "files": {
+   "Pkg/File.lean": "universe u\naxiom u : Type\naxiom f : Type u\n"
+  },
+  "known": [],
+  "expected": {
+   "f": []
+  },
+  "why": "The universe parameter u and term-level axiom u can coexist. Type u refers only to the universe parameter."
+ },
+ {
+  "id": "let-bound-name-counted-as-a-constant",
+  "files": {
+   "Pkg/File.lean": "axiom a : Type\ndef f : (let a := Nat; a) := 0\n"
+  },
+  "known": [
+   "Nat"
+  ],
+  "expected": {
+   "f": [
+    "Nat"
+   ]
+  },
+  "why": "The signature uses a let-bound a. The binder patterns miss let binders and the scan resolves a to the root axiom."
+ },
+ {
+  "id": "instance-priority-counted-as-a-constant",
+  "files": {
+   "Pkg/File.lean": "axiom low : Type\nclass C where\n  n : Nat\ninstance (priority := low) i : C := ⟨0⟩\n"
+  },
+  "known": [
+   "Nat"
+  ],
+  "expected": {
+   "i": [
+    "C"
+   ]
+  },
+  "why": "The low token is instance priority metadata. The scanner includes the priority annotation in signature_text and resolves low to the root axiom."
+ },
+ {
+  "id": "named-parent-label-counted-as-a-constant",
+  "files": {
+   "Pkg/File.lean": "axiom toBase : Type\nstructure Base where\n  n : Nat\nclass Child extends toBase : Base\n"
+  },
+  "known": [],
+  "expected": {
+   "Child": [
+    "Base"
+   ]
+  },
+  "why": "In a named extends clause, toBase names the generated projection Child.toBase. It adds no reference to the root axiom toBase. Base is the written parent dependency."
+ },
+ {
+  "id": "named-macro-body-counted-as-parser-type",
+  "files": {
+   "Pkg/File.lean": "import Lean\naxiom T : Type\nmacro (name := sampleMacro) \"mysample\" : term => `(T)\n"
+  },
+  "known": [
+   "Lean.ParserDescr"
+  ],
+  "expected": {
+   "sampleMacro": [
+    "Lean.ParserDescr"
+   ]
+  },
+  "why": "The Rust record for the named macro contains its implementation quotation. The resulting edge to T comes from the quotation. Lean's named parser descriptor has type Lean.ParserDescr."
+ },
+ {
+  "id": "crlf-keeps-utf8-scope-offsets",
+  "files": {
+   "Pkg/File.lean": "namespace A\r\naxiom T : Type\r\nend A\r\n-- σ\r\nopen A\r\naxiom f : T\r\n"
+  },
+  "known": [],
+  "expected": {
+   "f": [
+    "A.T"
+   ]
+  },
+  "why": "CRLF line endings and multibyte comment text preserve the byte offset of open A and the resulting reference."
+ },
+ {
+  "id": "empty-and-comment-files-keep-parser-alignment",
+  "files": {
+   "Blank.lean": "",
+   "Comment.lean": "-- comment only\n/- σ -/\n",
+   "Nonempty.lean": "axiom f : Nat\n"
+  },
+  "known": [
+   "Nat"
+  ],
+  "expected": {
+   "f": [
+    "Nat"
+   ]
+  },
+  "why": "An empty file and a comment-only file each produce an empty entry from parse_files. The nonempty file gets its own declaration."
+ },
+ {
+  "id": "qualified-imports-keep-short-names-distinct",
+  "files": {
+   "A.lean": "axiom A.T : Type\n",
+   "B.lean": "axiom B.T : Type\n",
+   "Use.lean": "import A\nimport B\naxiom f : A.T → B.T → A.T\n"
+  },
+  "known": [],
+  "expected": {
+   "f": [
+    "A.T",
+    "B.T"
+   ]
+  },
+  "why": "Two imported T declarations resolve independently by qualification. The repeated A.T is deduplicated in first-appearance order."
+ },
+ {
+  "id": "explicit-types-exclude-docs-attributes-and-bodies",
+  "files": {
+   "Pkg/File.lean": "/-- Bool. -/\n@[inline] def f : Nat := go 3\nwhere\n  go : Nat → Nat\n    | 0 => 0\n    | n+1 => go n\n  termination_by n => n\nabbrev A : Nat := 0\nopaque O : Bool := true\naxiom X : Nat\n"
+  },
+  "known": [
+   "Bool",
+   "Nat",
+   "go",
+   "inline",
+   "n"
+  ],
+  "expected": {
+   "f": [
+    "Nat"
+   ],
+   "A": [
+    "Nat"
+   ],
+   "O": [
+    "Bool"
+   ],
+   "X": [
+    "Nat"
+   ]
+  },
+  "why": "The documented and attributed recursive definition keeps its explicit type. The helper and termination clause contribute no edges. The abbrev, opaque and axiom also keep their explicit types."
+ }
+]

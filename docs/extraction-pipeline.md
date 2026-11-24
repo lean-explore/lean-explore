@@ -17,15 +17,19 @@ python -m lean_explore.extract [OPTIONS]
 
 Four stages, run in order:
 
-1. **doc-gen4** (optional, `--run-doc-gen4`): runs Lake + doc-gen4 against
-   each package workspace in `lean/<package>/` to produce structured
-   declaration data (BMP files). This is the slow step: it builds Lean
-   packages from source.
-2. **Parse** (`--parse-docs`): reads the doc-gen4 output and writes one
-   row per declaration into a fresh SQLite database under a new
-   `YYYYMMDD_HHMMSS` directory in `LEAN_EXPLORE_DATA_DIR`.
+1. **Fetch** (optional, `--run-doc-gen4`): clones each registered package
+   at the ref its version strategy selects, into `lean/<package>/source/`.
+   Nothing is built. For a package configured to be built, this stage
+   instead runs Lake + doc-gen4 in its workspace, which is slow.
+2. **Parse** (`--parse-docs`): reads each package's sources with the
+   build-free parser (or its doc-gen4 output) and writes one row per
+   declaration into a fresh SQLite database under a new `YYYYMMDD_HHMMSS`
+   directory in `LEAN_EXPLORE_DATA_DIR`.
 3. **Informalize** (`--informalize`): calls an LLM (through OpenRouter) to
-   generate a natural-language description for each declaration.
+   generate a natural-language description for each declaration. The prompt
+   includes the descriptions of up to 20 of its dependencies, leaving out the
+   names listed in `extract/informalize/common_dependencies.txt` (`Eq`,
+   `HAdd.hAdd`, `Nat` and the like), which a model already knows.
 4. **Embed** (`--embeddings`): runs each informalization through the
    sentence-transformer to produce vector embeddings.
 5. **Index** (`--index`): builds the FAISS semantic index and the two BM25
@@ -161,17 +165,47 @@ extraction directory automatically.
 
 The registry lives in `src/lean_explore/extract/packages/registry.py`:
 
-- `mathlib`: also supplies `Batteries`, `Init`, `Lean`, `Std` from its
-  transitive dependencies.
-- `physlean`
+- `lean`: `Init`, `Std` and `Lean`, from the `src` directory of the Lean
+  repository, at its newest tag.
+- `batteries`
+- `mathlib`
+- `physlean`: `Physlib`, `PhyslibAlpha` and `QuantumInfo`
 - `flt`
 - `formal-conjectures`
 - `cslib`
 
-Each package entry specifies its git URL, version strategy (`LATEST` or
-`TAGGED`), and dependencies. Adding a new package means adding a
-`PackageConfig` to that registry and creating a corresponding workspace
+Every registered package is extracted from source (see the next section):
+`--run-doc-gen4` clones it and nothing is built. Each entry specifies its git
+URL, version strategy (`LATEST` for the default branch, `TAGGED` for the
+newest tag), the module prefixes that belong to it, and its dependencies.
+Adding a package means adding a `PackageConfig` to the registry.
+
+A package can still be built and read from doc-gen4 output by leaving its
+`extraction` at `ExtractionMethod.DOCGEN` and creating a Lake workspace for it
 under `lean/<name>/`.
+
+## Packages without a build
+
+A package whose `PackageConfig` sets `extraction=ExtractionMethod.SOURCE` is not built. `--run-doc-gen4` clones its repository into `lean/<name>/source/` at the ref its version strategy selects, and the parse step reads its Lean files with the build-free parser in `parser/`. Install the parser's Python bindings first:
+
+```bash
+pip install ./src/lean_explore/parser/crates/lean-source-py
+```
+
+The rows have the same name, module, line range, source text, docstring and source link format as doc-gen4 rows. The parser does not elaborate, so they differ in three ways:
+
+- Dependencies are approximate. The parser finds them (`refs` in `parser/crates/lean-source`, requested with `parse_files(references=True)`) and the reader keeps the ones that are stored rows. They are what the signature refers to as far as it is written down:
+  - the identifiers that resolve to a declaration by Lean's lookup rules: the declaration's namespaces, the root, the `open` and `export` commands in effect, and declarations of packages extracted earlier in the run. A name is only visible if it is declared earlier in the file or in an imported module. Types of the section variables a declaration uses are included, as are structure parents;
+  - the constants that a notation stands for (`ℝ` is `Real`, `''` is `Set.image`, `𝓝` is `nhds`). The parser reads the `notation`, `infix`, `prefix`, `postfix`, `notation3`, `macro_rules` and `macro` commands of the package and of its context files, and uses a notation where it is active: after its declaration and in importing modules, a `local` one in its section, a `scoped` one where its namespace is entered or opened;
+  - the fields accessed on a term whose type is written: `F.obj` with `(F : C ⥤ D)` is `CategoryTheory.Functor.obj`, also for an inherited field, a chain `x.f.g` and a parenthesised application.
+
+  References made by elaboration (instances, coercions, implicit arguments) are missing, as are the fields of a term whose type is not written, and where Lean would choose between candidates by type, none is recorded. `tests/extract/source/cases/` holds small packages with the references Lean reports for them, and `cases_test.py` lists the ones source extraction is known to get wrong.
+- Context files. Notations and names from outside the package are read from source files that are already on disk: the sources of the package's Lean toolchain, if elan has it installed (`~/.elan/toolchains/<toolchain>/src/lean`, where core notation such as `+` and `=` is declared), and of its dependencies (`lean/<dependency>/.lake/packages` for a dependency built for doc-gen4, `lean/<dependency>/source` for a source package). `extract_source_package` collects them with `source/context.py`; `parse_package_sources` takes them as `context_paths`. Nothing is built for this, and without them only the notations declared in the package itself are known.
+- Names that are not rows. Most constants found through notation and field access are class methods and structure fields (`HAdd.hAdd` for `+`, `LE.le` for `≤`, `CategoryTheory.Functor.obj`), which are not stored rows, so the reader drops them. doc-gen4 rows do list such names as dependencies. On Mathlib the reader drops 250,211 of 1,699,250 references this way, of which 248,225 are constants of the declaration's elaborated type.
+- Anonymous instances are skipped, because Lean names them from the elaborated type.
+- Names that attributes derive by rule, such as `to_additive` without a written name, are guesses, so they are left out unless `parse_package_sources` is called with `include_approximate=True`. Names generated by macros and docstrings given inside attributes are missing.
+
+On FLT at commit ee47fd2a, the source path stores 3,069 declarations where doc-gen4 stored 3,834. All 3,064 names they share have identical source text and source links.
 
 ## See also
 

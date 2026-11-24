@@ -1,7 +1,7 @@
 """Tests for the reranker client module.
 
 The Hugging Face tokenizer and model are replaced by small fakes so the real
-scoring arithmetic (last-token logits, softmax over true/false) runs on tiny
+scoring arithmetic (last-token logits, softmax over yes/no) runs on tiny
 tensors without downloading or loading any model weights.
 """
 
@@ -13,6 +13,8 @@ import pytest
 import torch
 
 from lean_explore.util.reranker_client import (
+    ASSISTANT_SUFFIX,
+    CONVERSATION_PREFIX,
     DEFAULT_CPU_BATCH_SIZE,
     DEFAULT_CUDA_BATCH_SIZE,
     DEFAULT_INSTRUCTION,
@@ -20,8 +22,8 @@ from lean_explore.util.reranker_client import (
     RerankerResponse,
 )
 
-FALSE_ID = 0
-TRUE_ID = 1
+NO_ID = 0
+YES_ID = 1
 
 
 class FakeEncoding(dict):
@@ -42,18 +44,39 @@ class FakeTokenizer:
         self.calls: list[tuple[list[str], dict]] = []
 
     def convert_tokens_to_ids(self, token: str) -> int:
-        """Return the fixed ids used for the "true"/"false" tokens."""
-        return {"true": TRUE_ID, "false": FALSE_ID}[token]
+        """Accept only the model's trained answer tokens."""
+        return {"yes": YES_ID, "no": NO_ID}[token]
+
+    def encode(self, text, add_special_tokens):
+        """Give the conversation boundaries recognizable token sequences."""
+        assert not add_special_tokens
+        return {CONVERSATION_PREFIX: [10, 11], ASSISTANT_SUFFIX: [12, 13]}[text]
 
     def __call__(self, pairs, **kwargs):
         """Encode pairs as their documents' relevance values."""
         self.calls.append((list(pairs), kwargs))
-        values = [self.relevance[p.split("<Document>: ", 1)[1]] for p in pairs]
-        return FakeEncoding(input_ids=torch.tensor(values))
+        values = [
+            [self.relevance[p.split("<Document>: ", 1)[1]]] * (index + 1)
+            for index, p in enumerate(pairs)
+        ]
+        return FakeEncoding(input_ids=[v[: kwargs["max_length"]] for v in values])
+
+    def pad(self, inputs, padding, return_tensors):
+        """Left-pad sequences and expose the resulting attention masks."""
+        assert padding and return_tensors == "pt"
+        rows = inputs["input_ids"]
+        length = max(map(len, rows))
+        self.padded = FakeEncoding(
+            input_ids=torch.tensor([[0] * (length - len(row)) + row for row in rows]),
+            attention_mask=torch.tensor(
+                [[0] * (length - len(row)) + [1] * len(row) for row in rows]
+            ),
+        )
+        return self.padded
 
 
 class FakeModel:
-    """Causal LM whose last-token "true" logit equals the input relevance."""
+    """Causal LM whose last-token "yes" logit equals the body relevance."""
 
     def __init__(self):
         """Initialize call tracking."""
@@ -71,14 +94,16 @@ class FakeModel:
         """Record that eval mode was requested."""
         self.eval_called = True
 
-    def __call__(self, input_ids):
+    def __call__(self, input_ids, attention_mask, logits_to_keep):
         """Return logits of shape [batch, seq=2, vocab=2]."""
         if self.error is not None:
             raise self.error
         self.batch_sizes.append(len(input_ids))
+        assert logits_to_keep == 1
+        assert torch.all(attention_mask[:, -1] == 1)
         logits = torch.zeros(len(input_ids), 2, 2)
-        logits[:, -1, TRUE_ID] = input_ids
-        logits[:, 0, TRUE_ID] = -100.0  # Non-final tokens must be ignored.
+        logits[:, -1, YES_ID] = input_ids[:, -3]
+        logits[:, 0, YES_ID] = -100.0  # Non-final tokens must be ignored.
         return SimpleNamespace(logits=logits)
 
 
@@ -86,7 +111,7 @@ RELEVANCE = {"a": 2.0, "b": -1.0, "c": 0.0, "d": 3.0, "e": -2.0}
 
 
 def expected_score(relevance: float) -> float:
-    """Softmax over (false=0, true=relevance) equals sigmoid(relevance)."""
+    """Softmax over (no=0, yes=relevance) equals sigmoid(relevance)."""
     return 1.0 / (1.0 + math.exp(-relevance))
 
 
@@ -117,7 +142,7 @@ class TestRerankerClientInit:
     """Tests for model loading and configuration."""
 
     def test_loads_tokenizer_and_model_for_cpu(self, fakes, client):
-        """CPU uses float32, left padding, eval mode, and true/false token ids."""
+        """CPU uses float32, left padding, eval mode, and yes/no token ids."""
         fakes.tok_cls.from_pretrained.assert_called_once_with(
             "test-model", padding_side="left", trust_remote_code=True
         )
@@ -126,8 +151,14 @@ class TestRerankerClientInit:
         )
         assert fakes.model.device == "cpu"
         assert fakes.model.eval_called
-        assert (client._token_true_id, client._token_false_id) == (TRUE_ID, FALSE_ID)
+        assert (client._token_yes_id, client._token_no_id) == (YES_ID, NO_ID)
         assert client.instruction == DEFAULT_INSTRUCTION
+
+    def test_rejects_budget_that_cannot_fit_body(self, fakes):
+        """Invalid context budgets fail before loading model weights."""
+        with pytest.raises(ValueError, match="max_length"):
+            RerankerClient(model_name="test-model", device="cpu", max_length=4)
+        fakes.model_cls.from_pretrained.assert_not_called()
 
     def test_cuda_uses_float16(self, fakes):
         """GPU loading uses half precision and moves the model to CUDA."""
@@ -181,7 +212,7 @@ class TestRerankerScoring:
         )
 
     def test_rerank_sync_scores_in_input_order(self, fakes, client):
-        """Scores are P(true) per document, aligned with the input order."""
+        """Scores are P(yes) per document, in the input order."""
         docs = ["a", "b", "c"]
         response = client.rerank_sync("query", docs)
 
@@ -194,16 +225,34 @@ class TestRerankerScoring:
         assert response.scores[0] > response.scores[2] > response.scores[1]
 
     def test_tokenizer_receives_truncation_settings(self, fakes, client):
-        """Tokenization pads, truncates to max_length, and targets the device."""
+        """The body budget reserves both conversation boundaries."""
         client.rerank_sync("query", ["a"])
         pairs, kwargs = fakes.tokenizer.calls[0]
         assert pairs == [client._format_pair("query", "a")]
         assert kwargs == {
-            "padding": True,
+            "padding": False,
             "truncation": True,
-            "max_length": 64,
-            "return_tensors": "pt",
+            "max_length": 60,
+            "add_special_tokens": False,
+            "return_attention_mask": False,
         }
+        assert fakes.tokenizer.padded.device == "cpu"
+
+    def test_truncation_preserves_answer_position_and_left_padding(self, fakes, client):
+        """Long bodies keep the answer suffix; shorter rows receive left padding."""
+        client.max_length = 6
+        client.rerank_sync("query", ["a", "b", "c"])
+        encoded = fakes.tokenizer.padded
+        assert encoded["input_ids"].tolist() == [
+            [0, 10, 11, 2, 12, 13],
+            [10, 11, -1, -1, 12, 13],
+            [10, 11, 0, 0, 12, 13],
+        ]
+        assert encoded["attention_mask"].tolist() == [
+            [0, 1, 1, 1, 1, 1],
+            [1, 1, 1, 1, 1, 1],
+            [1, 1, 1, 1, 1, 1],
+        ]
 
     async def test_rerank_batches_and_preserves_order(self, fakes, client):
         """Large inputs are split into batches whose scores are concatenated."""

@@ -6,7 +6,7 @@ import os
 
 import torch
 from pydantic import BaseModel
-from transformers import AutoModelForCausalLM, AutoTokenizer
+from transformers import AutoModelForCausalLM, AutoTokenizer, BatchEncoding
 
 from lean_explore.util.device import select_device
 
@@ -15,6 +15,12 @@ logger = logging.getLogger(__name__)
 DEFAULT_INSTRUCTION = "Find relevant Lean 4 math declarations"
 DEFAULT_CUDA_BATCH_SIZE = 16
 DEFAULT_CPU_BATCH_SIZE = 32
+CONVERSATION_PREFIX = (
+    "<|im_start|>system\n"
+    "Does the document satisfy the query and instruction? Answer yes or no."
+    "<|im_end|>\n<|im_start|>user\n"
+)
+ASSISTANT_SUFFIX = "<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n"
 
 
 class RerankerResponse(BaseModel):
@@ -86,6 +92,13 @@ class RerankerClient:
         self.tokenizer = AutoTokenizer.from_pretrained(
             model_name, padding_side="left", trust_remote_code=True
         )
+        self._prefix_tokens = self.tokenizer.encode(
+            CONVERSATION_PREFIX, add_special_tokens=False
+        )
+        self._suffix_tokens = self.tokenizer.encode(
+            ASSISTANT_SUFFIX, add_special_tokens=False
+        )
+        self._body_token_budget()
 
         # Use float32 on CPU (faster than float16 which gets emulated)
         # Use float16 on GPU for memory efficiency
@@ -98,9 +111,9 @@ class RerankerClient:
         ).to(self.device)  # type: ignore[arg-type]
         self.model.eval()
 
-        # Get token IDs for true/false classification
-        self._token_true_id = self.tokenizer.convert_tokens_to_ids("true")
-        self._token_false_id = self.tokenizer.convert_tokens_to_ids("false")
+        # Qwen3-Reranker is trained to answer yes/no in an assistant turn.
+        self._token_yes_id = self.tokenizer.convert_tokens_to_ids("yes")
+        self._token_no_id = self.tokenizer.convert_tokens_to_ids("no")
 
         logger.info("Reranker model loaded successfully")
 
@@ -122,6 +135,33 @@ class RerankerClient:
             f"<Instruct>: {self.instruction}\n<Query>: {query}\n<Document>: {document}"
         )
 
+    def _body_token_budget(self) -> int:
+        """Reserve the conversation wrapper and reject an unusable token budget."""
+        budget = self.max_length - len(self._prefix_tokens) - len(self._suffix_tokens)
+        if budget < 1:
+            raise ValueError(
+                "max_length must leave room for input after the chat wrapper"
+            )
+        return budget
+
+    def _prepare_inputs(self, pairs: list[str]) -> BatchEncoding:
+        """Truncate pair content while preserving the assistant answer position."""
+        inputs = self.tokenizer(
+            pairs,
+            padding=False,
+            truncation=True,
+            max_length=self._body_token_budget(),
+            add_special_tokens=False,
+            return_attention_mask=False,
+        )
+        inputs["input_ids"] = [
+            self._prefix_tokens + identifiers + self._suffix_tokens
+            for identifiers in inputs["input_ids"]
+        ]
+        return self.tokenizer.pad(inputs, padding=True, return_tensors="pt").to(
+            self.device
+        )
+
     @torch.no_grad()
     def _compute_scores_sync(self, pairs: list[str]) -> list[float]:
         """Compute relevance scores for formatted pairs synchronously.
@@ -132,26 +172,19 @@ class RerankerClient:
         Returns:
             List of relevance scores in [0, 1].
         """
-        inputs = self.tokenizer(
-            pairs,
-            padding=True,
-            truncation=True,
-            max_length=self.max_length,
-            return_tensors="pt",
-        ).to(self.device)
+        inputs = self._prepare_inputs(pairs)
 
         # Get logits for last token
-        outputs = self.model(**inputs)
+        # Only the assistant's next-token distribution is needed. Avoid a
+        # batch x sequence x vocabulary tensor for all earlier positions.
+        outputs = self.model(**inputs, logits_to_keep=1)
         logits = outputs.logits[:, -1, :]
 
-        # Extract true/false logits
-        true_logits = logits[:, self._token_true_id]
-        false_logits = logits[:, self._token_false_id]
+        yes_logits = logits[:, self._token_yes_id]
+        no_logits = logits[:, self._token_no_id]
 
-        # Compute probability of "true" using softmax
-        stacked = torch.stack([false_logits, true_logits], dim=1)
-        log_probs = torch.nn.functional.log_softmax(stacked, dim=1)
-        scores = log_probs[:, 1].exp()
+        stacked = torch.stack([no_logits, yes_logits], dim=1)
+        scores = torch.softmax(stacked, dim=1)[:, 1]
 
         return scores.cpu().tolist()
 
