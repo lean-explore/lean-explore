@@ -90,6 +90,7 @@ class TestSearchSummaryTool:
                 "query": "q",
                 "count": 2,
                 "processing_time_ms": 7,
+                "feedback_token": None,
                 "results": [
                     {"id": 1, "name": "Test.decl1", "description": "Test Title."},
                     {"id": 2, "name": "Test.decl2"},
@@ -179,3 +180,22 @@ class TestBackendFailures:
 
             assert result.isError
             assert "index unavailable" in result.content[0].text
+
+
+@pytest.mark.parametrize("tool", ["search", "search_summary"])
+async def test_hosted_feedback_token_survives_tool_serialization(
+    backend, monkeypatch, tool
+):
+    """Both MCP search formats preserve an optional hosted feedback capability."""
+    original = backend.search
+
+    async def search(**kwargs):
+        response = await original(**kwargs)
+        response.feedback_token = "a" * 43
+        return response
+
+    monkeypatch.setattr(backend, "search", search)
+    async with connect(backend) as client:
+        result = await client.call_tool(tool, {"query": "prime"})
+        assert not result.isError
+        assert result.structuredContent["feedback_token"] == "a" * 43
