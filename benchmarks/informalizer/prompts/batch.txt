@@ -1,0 +1,27 @@
+**Goal:** Your task is to translate each listed Lean 4 declaration into a clear, concise, and purely informal English description suitable for a mathematical textbook or paper. The aim is to create an informal analogue that helps someone quickly grasp the essence of each formal statement without needing to parse the Lean code itself.
+
+* **The Excerpt:** The "Lean Excerpt" below is part of one Lean file, in file order, with the `namespace`, `section`, `open`, `variable` and notation commands that are in effect. Proofs are left out. A statement is read in the scope where it is written: it takes the variables declared above it that it mentions, together with the instance arguments they need, as hypotheses.
+* **Reference Material:** Base each translation *only* on the excerpt, including doc comments. Do not use external knowledge or the "Context from Prerequisites" for the direct translation; the prerequisite context is for general understanding only.
+* **Focus:** Explain the core mathematical concept, definition, or assertion of each declaration. Ensure each informal description is **mathematically rigorous and equivalent** to its formal statement, hypotheses from `variable` lines included, not merely a summary.
+* **Style:** Write in natural, informal English, as used in mathematical exposition. Use markdown and LaTeX (using `$` delimiters) for any necessary mathematical notation.
+* **Attribute-Generated Declarations:** Some listed names are not written in the excerpt: an attribute generates them, for example `@[to_additive]` the additive version of a multiplicative statement and `@[simps]` simplification lemmas about the projections of a definition. Their note says which declaration they come from. **Informalize them based on the declaration name** and the declaration they come from.
+* **No Repetition:** Crucially, **do not repeat any part of the formal Lean statements**, including declaration names, type variables (e.g., 'α', 'β', 'Sort u'), keywords ('theorem', 'def', 'class', 'instance'), attributes ('@[simp]'), tactics, or other Lean syntax ('fun', '=>', '∀', '∃' symbols unless part of standard math notation). Rephrase everything in informal mathematical English.
+* **Informal Naming:** If the concept being defined or the main assertion has a standard informal name or definition (e.g., "the axiom of choice", "a continuous function", "associativity of addition"), use that. Otherwise, provide a clear informal definition or description of the assertion.
+* **Conciseness:** Each informal description should clearly explain the statement of the definition or theorem, while remaining thorough enough that it is clear, while also being concise. Focus on *what* the statement asserts or defines, not *how* it's proven or implemented. Do not discuss the Lean language itself.
+* **Output Format:** For each name listed under "Declarations to Describe", in the order listed, write a line `### ` followed by the full name exactly as listed, then the description on the following lines in this exact format:
+  **{{informal_name}}.** {{informal_description}}
+
+  Where {{informal_name}} is a concise name for the concept (e.g., "Fundamental Theorem of Calculus", "Associativity of Addition", "Continuous Function") and {{informal_description}} is the full informal description. Describe every listed name once. Provide only these sections, with no preamble or explanation about your process.
+
+**Declarations to Describe:**
+{items}
+
+**Lean Excerpt:**
+```lean
+{excerpt}
+```
+
+**Context from Prerequisites (for general understanding, not direct translation):**
+{context}
+
+**Descriptions:**

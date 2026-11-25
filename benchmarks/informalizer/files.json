@@ -1,0 +1,752 @@
+{
+ "data_version": "20260714_172516",
+ "mathlib_commit": "aae61ae084c21995ee248964a81e3750ad0db2db",
+ "seed": 0,
+ "query_files": [
+  {
+   "path": "queries.jsonl",
+   "sha256": "66617baf539b8f07af696ec56f5ab9dc9b0cc51e021bb05a8d44541932239661"
+  }
+ ],
+ "covered_queries": 353,
+ "declarations": 10510,
+ "strata": [
+  {
+   "index": 0,
+   "minimum_declarations": 1,
+   "maximum_declarations": 30,
+   "files": 5128,
+   "declarations": 60514
+  },
+  {
+   "index": 1,
+   "minimum_declarations": 30,
+   "maximum_declarations": 59,
+   "files": 1435,
+   "declarations": 60516
+  },
+  {
+   "index": 2,
+   "minimum_declarations": 59,
+   "maximum_declarations": 98,
+   "files": 806,
+   "declarations": 60454
+  },
+  {
+   "index": 3,
+   "minimum_declarations": 98,
+   "maximum_declarations": 165,
+   "files": 478,
+   "declarations": 60508
+  },
+  {
+   "index": 4,
+   "minimum_declarations": 166,
+   "maximum_declarations": 485,
+   "files": 265,
+   "declarations": 60554
+  }
+ ],
+ "files": [
+  {
+   "module": "Mathlib.CategoryTheory.Limits.Types.Equalizers",
+   "path": "Mathlib/CategoryTheory/Limits/Types/Equalizers.lean",
+   "declarations": 9,
+   "stratum": 0,
+   "covered_queries": 2
+  },
+  {
+   "module": "Mathlib.Combinatorics.Pigeonhole",
+   "path": "Mathlib/Combinatorics/Pigeonhole.lean",
+   "declarations": 30,
+   "stratum": 0,
+   "covered_queries": 2
+  },
+  {
+   "module": "Mathlib.Control.Traversable.Instances",
+   "path": "Mathlib/Control/Traversable/Instances.lean",
+   "declarations": 21,
+   "stratum": 0,
+   "covered_queries": 2
+  },
+  {
+   "module": "Mathlib.Data.Fin.Tuple.Reflection",
+   "path": "Mathlib/Data/Fin/Tuple/Reflection.lean",
+   "declarations": 18,
+   "stratum": 0,
+   "covered_queries": 4
+  },
+  {
+   "module": "Mathlib.Data.Finset.Attach",
+   "path": "Mathlib/Data/Finset/Attach.lean",
+   "declarations": 4,
+   "stratum": 0,
+   "covered_queries": 5
+  },
+  {
+   "module": "Mathlib.Data.Fintype.Pigeonhole",
+   "path": "Mathlib/Data/Fintype/Pigeonhole.lean",
+   "declarations": 4,
+   "stratum": 0,
+   "covered_queries": 3
+  },
+  {
+   "module": "Mathlib.Data.Int.LeastGreatest",
+   "path": "Mathlib/Data/Int/LeastGreatest.lean",
+   "declarations": 8,
+   "stratum": 0,
+   "covered_queries": 3
+  },
+  {
+   "module": "Mathlib.Data.Nat.Cast.Order.Ring",
+   "path": "Mathlib/Data/Nat/Cast/Order/Ring.lean",
+   "declarations": 12,
+   "stratum": 0,
+   "covered_queries": 3
+  },
+  {
+   "module": "Mathlib.Data.Nat.NthRoot.Defs",
+   "path": "Mathlib/Data/Nat/NthRoot/Defs.lean",
+   "declarations": 2,
+   "stratum": 0,
+   "covered_queries": 2
+  },
+  {
+   "module": "Mathlib.Data.Nat.Pairing",
+   "path": "Mathlib/Data/Nat/Pairing.lean",
+   "declarations": 27,
+   "stratum": 0,
+   "covered_queries": 2
+  },
+  {
+   "module": "Mathlib.Data.Set.UnionLift",
+   "path": "Mathlib/Data/Set/UnionLift.lean",
+   "declarations": 12,
+   "stratum": 0,
+   "covered_queries": 3
+  },
+  {
+   "module": "Mathlib.Dynamics.BirkhoffSum.Average",
+   "path": "Mathlib/Dynamics/BirkhoffSum/Average.lean",
+   "declarations": 14,
+   "stratum": 0,
+   "covered_queries": 2
+  },
+  {
+   "module": "Mathlib.FieldTheory.IsAlgClosed.AlgebraicClosure",
+   "path": "Mathlib/FieldTheory/IsAlgClosed/AlgebraicClosure.lean",
+   "declarations": 30,
+   "stratum": 0,
+   "covered_queries": 2
+  },
+  {
+   "module": "Mathlib.FieldTheory.Minpoly.Basic",
+   "path": "Mathlib/FieldTheory/Minpoly/Basic.lean",
+   "declarations": 28,
+   "stratum": 0,
+   "covered_queries": 2
+  },
+  {
+   "module": "Mathlib.Logic.Nontrivial.Defs",
+   "path": "Mathlib/Logic/Nontrivial/Defs.lean",
+   "declarations": 22,
+   "stratum": 0,
+   "covered_queries": 4
+  },
+  {
+   "module": "Mathlib.MeasureTheory.Function.AEEqOfLIntegral",
+   "path": "Mathlib/MeasureTheory/Function/AEEqOfLIntegral.lean",
+   "declarations": 12,
+   "stratum": 0,
+   "covered_queries": 4
+  },
+  {
+   "module": "Mathlib.RingTheory.Complex",
+   "path": "Mathlib/RingTheory/Complex.lean",
+   "declarations": 4,
+   "stratum": 0,
+   "covered_queries": 3
+  },
+  {
+   "module": "Mathlib.RingTheory.Spectrum.Maximal.Defs",
+   "path": "Mathlib/RingTheory/Spectrum/Maximal/Defs.lean",
+   "declarations": 4,
+   "stratum": 0,
+   "covered_queries": 2
+  },
+  {
+   "module": "Mathlib.Topology.MetricSpace.Cauchy",
+   "path": "Mathlib/Topology/MetricSpace/Cauchy.lean",
+   "declarations": 10,
+   "stratum": 0,
+   "covered_queries": 2
+  },
+  {
+   "module": "Mathlib.Topology.MetricSpace.Pseudo.Lemmas",
+   "path": "Mathlib/Topology/MetricSpace/Pseudo/Lemmas.lean",
+   "declarations": 23,
+   "stratum": 0,
+   "covered_queries": 2
+  },
+  {
+   "module": "Mathlib.AlgebraicTopology.SimplexCategory.GeneratorsRelations.NormalForms",
+   "path": "Mathlib/AlgebraicTopology/SimplexCategory/GeneratorsRelations/NormalForms.lean",
+   "declarations": 43,
+   "stratum": 1,
+   "covered_queries": 2
+  },
+  {
+   "module": "Mathlib.AlgebraicTopology.SimplicialSet.NerveAdjunction",
+   "path": "Mathlib/AlgebraicTopology/SimplicialSet/NerveAdjunction.lean",
+   "declarations": 51,
+   "stratum": 1,
+   "covered_queries": 2
+  },
+  {
+   "module": "Mathlib.Analysis.Normed.Operator.NNNorm",
+   "path": "Mathlib/Analysis/Normed/Operator/NNNorm.lean",
+   "declarations": 34,
+   "stratum": 1,
+   "covered_queries": 2
+  },
+  {
+   "module": "Mathlib.Analysis.SpecialFunctions.Pow.Asymptotics",
+   "path": "Mathlib/Analysis/SpecialFunctions/Pow/Asymptotics.lean",
+   "declarations": 45,
+   "stratum": 1,
+   "covered_queries": 3
+  },
+  {
+   "module": "Mathlib.Control.Fold",
+   "path": "Mathlib/Control/Fold.lean",
+   "declarations": 45,
+   "stratum": 1,
+   "covered_queries": 3
+  },
+  {
+   "module": "Mathlib.Data.Finset.Filter",
+   "path": "Mathlib/Data/Finset/Filter.lean",
+   "declarations": 32,
+   "stratum": 1,
+   "covered_queries": 4
+  },
+  {
+   "module": "Mathlib.Data.Finset.Sort",
+   "path": "Mathlib/Data/Finset/Sort.lean",
+   "declarations": 53,
+   "stratum": 1,
+   "covered_queries": 5
+  },
+  {
+   "module": "Mathlib.Data.Finset.Union",
+   "path": "Mathlib/Data/Finset/Union.lean",
+   "declarations": 56,
+   "stratum": 1,
+   "covered_queries": 3
+  },
+  {
+   "module": "Mathlib.Data.Fintype.BigOperators",
+   "path": "Mathlib/Data/Fintype/BigOperators.lean",
+   "declarations": 55,
+   "stratum": 1,
+   "covered_queries": 2
+  },
+  {
+   "module": "Mathlib.Data.List.Defs",
+   "path": "Mathlib/Data/List/Defs.lean",
+   "declarations": 49,
+   "stratum": 1,
+   "covered_queries": 3
+  },
+  {
+   "module": "Mathlib.Data.Prod.Lex",
+   "path": "Mathlib/Data/Prod/Lex.lean",
+   "declarations": 41,
+   "stratum": 1,
+   "covered_queries": 2
+  },
+  {
+   "module": "Mathlib.Data.Subtype",
+   "path": "Mathlib/Data/Subtype.lean",
+   "declarations": 46,
+   "stratum": 1,
+   "covered_queries": 3
+  },
+  {
+   "module": "Mathlib.Dynamics.Flow",
+   "path": "Mathlib/Dynamics/Flow.lean",
+   "declarations": 55,
+   "stratum": 1,
+   "covered_queries": 4
+  },
+  {
+   "module": "Mathlib.LinearAlgebra.Contraction",
+   "path": "Mathlib/LinearAlgebra/Contraction.lean",
+   "declarations": 35,
+   "stratum": 1,
+   "covered_queries": 2
+  },
+  {
+   "module": "Mathlib.LinearAlgebra.Matrix.Reindex",
+   "path": "Mathlib/LinearAlgebra/Matrix/Reindex.lean",
+   "declarations": 42,
+   "stratum": 1,
+   "covered_queries": 2
+  },
+  {
+   "module": "Mathlib.Logic.Function.Defs",
+   "path": "Mathlib/Logic/Function/Defs.lean",
+   "declarations": 45,
+   "stratum": 1,
+   "covered_queries": 3
+  },
+  {
+   "module": "Mathlib.MeasureTheory.Measure.OpenPos",
+   "path": "Mathlib/MeasureTheory/Measure/OpenPos.lean",
+   "declarations": 42,
+   "stratum": 1,
+   "covered_queries": 2
+  },
+  {
+   "module": "Mathlib.Probability.Distributions.Uniform",
+   "path": "Mathlib/Probability/Distributions/Uniform.lean",
+   "declarations": 38,
+   "stratum": 1,
+   "covered_queries": 3
+  },
+  {
+   "module": "Mathlib.Probability.IdentDistrib",
+   "path": "Mathlib/Probability/IdentDistrib.lean",
+   "declarations": 46,
+   "stratum": 1,
+   "covered_queries": 3
+  },
+  {
+   "module": "Mathlib.Probability.Moments.Covariance",
+   "path": "Mathlib/Probability/Moments/Covariance.lean",
+   "declarations": 57,
+   "stratum": 1,
+   "covered_queries": 2
+  },
+  {
+   "module": "Mathlib.Algebra.DirectSum.Basic",
+   "path": "Mathlib/Algebra/DirectSum/Basic.lean",
+   "declarations": 77,
+   "stratum": 2,
+   "covered_queries": 3
+  },
+  {
+   "module": "Mathlib.Algebra.Group.Units.Equiv",
+   "path": "Mathlib/Algebra/Group/Units/Equiv.lean",
+   "declarations": 78,
+   "stratum": 2,
+   "covered_queries": 3
+  },
+  {
+   "module": "Mathlib.Analysis.Convex.Topology",
+   "path": "Mathlib/Analysis/Convex/Topology.lean",
+   "declarations": 60,
+   "stratum": 2,
+   "covered_queries": 4
+  },
+  {
+   "module": "Mathlib.Analysis.Fourier.AddCircle",
+   "path": "Mathlib/Analysis/Fourier/AddCircle.lean",
+   "declarations": 64,
+   "stratum": 2,
+   "covered_queries": 3
+  },
+  {
+   "module": "Mathlib.Analysis.Normed.Module.Basic",
+   "path": "Mathlib/Analysis/Normed/Module/Basic.lean",
+   "declarations": 92,
+   "stratum": 2,
+   "covered_queries": 3
+  },
+  {
+   "module": "Mathlib.Analysis.Normed.Operator.BoundedLinearMaps",
+   "path": "Mathlib/Analysis/Normed/Operator/BoundedLinearMaps.lean",
+   "declarations": 67,
+   "stratum": 2,
+   "covered_queries": 3
+  },
+  {
+   "module": "Mathlib.Data.Fin.Basic",
+   "path": "Mathlib/Data/Fin/Basic.lean",
+   "declarations": 93,
+   "stratum": 2,
+   "covered_queries": 3
+  },
+  {
+   "module": "Mathlib.Data.Finset.Defs",
+   "path": "Mathlib/Data/Finset/Defs.lean",
+   "declarations": 76,
+   "stratum": 2,
+   "covered_queries": 3
+  },
+  {
+   "module": "Mathlib.Data.Fintype.EquivFin",
+   "path": "Mathlib/Data/Fintype/EquivFin.lean",
+   "declarations": 92,
+   "stratum": 2,
+   "covered_queries": 4
+  },
+  {
+   "module": "Mathlib.Data.Nat.Init",
+   "path": "Mathlib/Data/Nat/Init.lean",
+   "declarations": 63,
+   "stratum": 2,
+   "covered_queries": 3
+  },
+  {
+   "module": "Mathlib.Data.PNat.Basic",
+   "path": "Mathlib/Data/PNat/Basic.lean",
+   "declarations": 80,
+   "stratum": 2,
+   "covered_queries": 3
+  },
+  {
+   "module": "Mathlib.LinearAlgebra.Matrix.Determinant.Basic",
+   "path": "Mathlib/LinearAlgebra/Matrix/Determinant/Basic.lean",
+   "declarations": 89,
+   "stratum": 2,
+   "covered_queries": 4
+  },
+  {
+   "module": "Mathlib.Order.Defs.PartialOrder",
+   "path": "Mathlib/Order/Defs/PartialOrder.lean",
+   "declarations": 68,
+   "stratum": 2,
+   "covered_queries": 3
+  },
+  {
+   "module": "Mathlib.Order.Filter.Defs",
+   "path": "Mathlib/Order/Filter/Defs.lean",
+   "declarations": 71,
+   "stratum": 2,
+   "covered_queries": 3
+  },
+  {
+   "module": "Mathlib.Order.WellFounded",
+   "path": "Mathlib/Order/WellFounded.lean",
+   "declarations": 64,
+   "stratum": 2,
+   "covered_queries": 3
+  },
+  {
+   "module": "Mathlib.SetTheory.Cardinal.Finite",
+   "path": "Mathlib/SetTheory/Cardinal/Finite.lean",
+   "declarations": 90,
+   "stratum": 2,
+   "covered_queries": 3
+  },
+  {
+   "module": "Mathlib.Topology.Algebra.Module.Spaces.ContinuousLinearMap",
+   "path": "Mathlib/Topology/Algebra/Module/Spaces/ContinuousLinearMap.lean",
+   "declarations": 74,
+   "stratum": 2,
+   "covered_queries": 3
+  },
+  {
+   "module": "Mathlib.Topology.Neighborhoods",
+   "path": "Mathlib/Topology/Neighborhoods.lean",
+   "declarations": 78,
+   "stratum": 2,
+   "covered_queries": 5
+  },
+  {
+   "module": "Mathlib.Topology.Order.Compact",
+   "path": "Mathlib/Topology/Order/Compact.lean",
+   "declarations": 72,
+   "stratum": 2,
+   "covered_queries": 3
+  },
+  {
+   "module": "Mathlib.Topology.Order.Monotone",
+   "path": "Mathlib/Topology/Order/Monotone.lean",
+   "declarations": 61,
+   "stratum": 2,
+   "covered_queries": 3
+  },
+  {
+   "module": "Mathlib.Algebra.GroupWithZero.Associated",
+   "path": "Mathlib/Algebra/GroupWithZero/Associated.lean",
+   "declarations": 151,
+   "stratum": 3,
+   "covered_queries": 5
+  },
+  {
+   "module": "Mathlib.Algebra.Module.Equiv.Basic",
+   "path": "Mathlib/Algebra/Module/Equiv/Basic.lean",
+   "declarations": 151,
+   "stratum": 3,
+   "covered_queries": 4
+  },
+  {
+   "module": "Mathlib.Algebra.Polynomial.Eval.Defs",
+   "path": "Mathlib/Algebra/Polynomial/Eval/Defs.lean",
+   "declarations": 160,
+   "stratum": 3,
+   "covered_queries": 4
+  },
+  {
+   "module": "Mathlib.Analysis.SpecialFunctions.Log.Base",
+   "path": "Mathlib/Analysis/SpecialFunctions/Log/Base.lean",
+   "declarations": 116,
+   "stratum": 3,
+   "covered_queries": 3
+  },
+  {
+   "module": "Mathlib.Data.Finset.Card",
+   "path": "Mathlib/Data/Finset/Card.lean",
+   "declarations": 155,
+   "stratum": 3,
+   "covered_queries": 5
+  },
+  {
+   "module": "Mathlib.Data.Finset.Image",
+   "path": "Mathlib/Data/Finset/Image.lean",
+   "declarations": 155,
+   "stratum": 3,
+   "covered_queries": 6
+  },
+  {
+   "module": "Mathlib.Data.Finset.Max",
+   "path": "Mathlib/Data/Finset/Max.lean",
+   "declarations": 111,
+   "stratum": 3,
+   "covered_queries": 3
+  },
+  {
+   "module": "Mathlib.Data.Fintype.Card",
+   "path": "Mathlib/Data/Fintype/Card.lean",
+   "declarations": 103,
+   "stratum": 3,
+   "covered_queries": 5
+  },
+  {
+   "module": "Mathlib.Data.Nat.ModEq",
+   "path": "Mathlib/Data/Nat/ModEq.lean",
+   "declarations": 116,
+   "stratum": 3,
+   "covered_queries": 4
+  },
+  {
+   "module": "Mathlib.GroupTheory.SpecificGroups.Cyclic",
+   "path": "Mathlib/GroupTheory/SpecificGroups/Cyclic.lean",
+   "declarations": 121,
+   "stratum": 3,
+   "covered_queries": 3
+  },
+  {
+   "module": "Mathlib.Logic.Equiv.Set",
+   "path": "Mathlib/Logic/Equiv/Set.lean",
+   "declarations": 118,
+   "stratum": 3,
+   "covered_queries": 3
+  },
+  {
+   "module": "Mathlib.MeasureTheory.Constructions.Pi",
+   "path": "Mathlib/MeasureTheory/Constructions/Pi.lean",
+   "declarations": 132,
+   "stratum": 3,
+   "covered_queries": 4
+  },
+  {
+   "module": "Mathlib.MeasureTheory.Integral.Bochner.Basic",
+   "path": "Mathlib/MeasureTheory/Integral/Bochner/Basic.lean",
+   "declarations": 140,
+   "stratum": 3,
+   "covered_queries": 4
+  },
+  {
+   "module": "Mathlib.MeasureTheory.Integral.SetToL1",
+   "path": "Mathlib/MeasureTheory/Integral/SetToL1.lean",
+   "declarations": 143,
+   "stratum": 3,
+   "covered_queries": 3
+  },
+  {
+   "module": "Mathlib.Order.ConditionallyCompleteLattice.Basic",
+   "path": "Mathlib/Order/ConditionallyCompleteLattice/Basic.lean",
+   "declarations": 159,
+   "stratum": 3,
+   "covered_queries": 3
+  },
+  {
+   "module": "Mathlib.SetTheory.Cardinal.Order",
+   "path": "Mathlib/SetTheory/Cardinal/Order.lean",
+   "declarations": 135,
+   "stratum": 3,
+   "covered_queries": 4
+  },
+  {
+   "module": "Mathlib.Topology.Bases",
+   "path": "Mathlib/Topology/Bases.lean",
+   "declarations": 146,
+   "stratum": 3,
+   "covered_queries": 5
+  },
+  {
+   "module": "Mathlib.Topology.Closure",
+   "path": "Mathlib/Topology/Closure.lean",
+   "declarations": 138,
+   "stratum": 3,
+   "covered_queries": 3
+  },
+  {
+   "module": "Mathlib.Topology.Homeomorph.Lemmas",
+   "path": "Mathlib/Topology/Homeomorph/Lemmas.lean",
+   "declarations": 125,
+   "stratum": 3,
+   "covered_queries": 4
+  },
+  {
+   "module": "Mathlib.Topology.Order.IntermediateValue",
+   "path": "Mathlib/Topology/Order/IntermediateValue.lean",
+   "declarations": 121,
+   "stratum": 3,
+   "covered_queries": 8
+  },
+  {
+   "module": "Mathlib.Algebra.Group.Basic",
+   "path": "Mathlib/Algebra/Group/Basic.lean",
+   "declarations": 445,
+   "stratum": 4,
+   "covered_queries": 4
+  },
+  {
+   "module": "Mathlib.Algebra.Group.End",
+   "path": "Mathlib/Algebra/Group/End.lean",
+   "declarations": 203,
+   "stratum": 4,
+   "covered_queries": 4
+  },
+  {
+   "module": "Mathlib.Algebra.Group.Subgroup.Lattice",
+   "path": "Mathlib/Algebra/Group/Subgroup/Lattice.lean",
+   "declarations": 195,
+   "stratum": 4,
+   "covered_queries": 5
+  },
+  {
+   "module": "Mathlib.Algebra.Group.Subgroup.Map",
+   "path": "Mathlib/Algebra/Group/Subgroup/Map.lean",
+   "declarations": 198,
+   "stratum": 4,
+   "covered_queries": 4
+  },
+  {
+   "module": "Mathlib.Analysis.Asymptotics.Defs",
+   "path": "Mathlib/Analysis/Asymptotics/Defs.lean",
+   "declarations": 333,
+   "stratum": 4,
+   "covered_queries": 4
+  },
+  {
+   "module": "Mathlib.Analysis.InnerProductSpace.PiL2",
+   "path": "Mathlib/Analysis/InnerProductSpace/PiL2.lean",
+   "declarations": 177,
+   "stratum": 4,
+   "covered_queries": 9
+  },
+  {
+   "module": "Mathlib.Analysis.RCLike.Basic",
+   "path": "Mathlib/Analysis/RCLike/Basic.lean",
+   "declarations": 282,
+   "stratum": 4,
+   "covered_queries": 4
+  },
+  {
+   "module": "Mathlib.Analysis.SpecialFunctions.Pow.NNReal",
+   "path": "Mathlib/Analysis/SpecialFunctions/Pow/NNReal.lean",
+   "declarations": 224,
+   "stratum": 4,
+   "covered_queries": 4
+  },
+  {
+   "module": "Mathlib.Analysis.SpecialFunctions.Pow.Real",
+   "path": "Mathlib/Analysis/SpecialFunctions/Pow/Real.lean",
+   "declarations": 216,
+   "stratum": 4,
+   "covered_queries": 5
+  },
+  {
+   "module": "Mathlib.Data.Finset.Lattice.Fold",
+   "path": "Mathlib/Data/Finset/Lattice/Fold.lean",
+   "declarations": 227,
+   "stratum": 4,
+   "covered_queries": 5
+  },
+  {
+   "module": "Mathlib.GroupTheory.OrderOfElement",
+   "path": "Mathlib/GroupTheory/OrderOfElement.lean",
+   "declarations": 399,
+   "stratum": 4,
+   "covered_queries": 4
+  },
+  {
+   "module": "Mathlib.Logic.Basic",
+   "path": "Mathlib/Logic/Basic.lean",
+   "declarations": 263,
+   "stratum": 4,
+   "covered_queries": 4
+  },
+  {
+   "module": "Mathlib.Logic.Equiv.Defs",
+   "path": "Mathlib/Logic/Equiv/Defs.lean",
+   "declarations": 262,
+   "stratum": 4,
+   "covered_queries": 12
+  },
+  {
+   "module": "Mathlib.Logic.Equiv.PartialEquiv",
+   "path": "Mathlib/Logic/Equiv/PartialEquiv.lean",
+   "declarations": 212,
+   "stratum": 4,
+   "covered_queries": 5
+  },
+  {
+   "module": "Mathlib.Logic.Function.Basic",
+   "path": "Mathlib/Logic/Function/Basic.lean",
+   "declarations": 258,
+   "stratum": 4,
+   "covered_queries": 15
+  },
+  {
+   "module": "Mathlib.MeasureTheory.Measure.Restrict",
+   "path": "Mathlib/MeasureTheory/Measure/Restrict.lean",
+   "declarations": 178,
+   "stratum": 4,
+   "covered_queries": 5
+  },
+  {
+   "module": "Mathlib.Order.CompleteLattice.Basic",
+   "path": "Mathlib/Order/CompleteLattice/Basic.lean",
+   "declarations": 327,
+   "stratum": 4,
+   "covered_queries": 6
+  },
+  {
+   "module": "Mathlib.Order.Hom.Basic",
+   "path": "Mathlib/Order/Hom/Basic.lean",
+   "declarations": 301,
+   "stratum": 4,
+   "covered_queries": 4
+  },
+  {
+   "module": "Mathlib.RepresentationTheory.Rep.Basic",
+   "path": "Mathlib/RepresentationTheory/Rep/Basic.lean",
+   "declarations": 227,
+   "stratum": 4,
+   "covered_queries": 5
+  },
+  {
+   "module": "Mathlib.Topology.ContinuousOn",
+   "path": "Mathlib/Topology/ContinuousOn.lean",
+   "declarations": 174,
+   "stratum": 4,
+   "covered_queries": 5
+  }
+ ]
+}

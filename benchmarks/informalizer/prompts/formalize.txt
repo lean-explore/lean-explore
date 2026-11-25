@@ -1,0 +1,15 @@
+Translate the following mathematical statement into a single Lean 4 theorem using Mathlib.
+
+State every object, type and hypothesis the statement needs as explicit binders of the theorem, use standard Mathlib definitions and notation, name the theorem `candidate`, and end it with `:= by sorry`. The file starts with:
+
+```lean
+import Mathlib
+open BigOperators Real Nat Topology
+```
+
+Statement:
+"""
+{description}
+"""
+
+Answer with the Lean theorem only, in one ```lean code block.

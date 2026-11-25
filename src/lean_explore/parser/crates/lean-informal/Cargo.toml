@@ -1,0 +1,18 @@
+[package]
+name = "lean-informal"
+description = "Plans per-file informalization requests from Lean source and assembles their results."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[lib]
+name = "lean_informal"
+
+[[bin]]
+name = "lean-informal"
+path = "src/main.rs"
+
+[dependencies]
+lean-source = { path = "../lean-source" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"

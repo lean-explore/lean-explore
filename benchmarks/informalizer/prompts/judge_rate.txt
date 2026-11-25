@@ -1,0 +1,27 @@
+You are checking whether a natural-language description of a Lean 4 declaration from Mathlib states exactly what the declaration states.
+
+The Lean source shows the declaration in the scope where it is written: the `variable` lines above it supply hypotheses and types that its statement uses. Proofs are left out. {note_line}
+
+Declaration name: {name}
+
+```lean
+{reference}
+```
+
+The parts a faithful description must state:
+{parts}
+
+Description to check:
+"""
+{description}
+"""
+
+Rate each part:
+- "match": the description states it correctly, in any wording or notation;
+- "minor": it is stated loosely, or left implicit where a mathematician would still read it correctly (a standard typeclass assumption, a coercion, an obvious domain);
+- "major": it is missing where it matters, or stated wrongly, so a reader would believe a different statement (a missing or extra hypothesis that changes the meaning, a wrong quantifier, a reversed implication or inequality, a wrong object).
+
+Then rate "unsupported": any claim in the description that the declaration does not make, with the same three levels ("none" instead of "match" when there is no such claim).
+
+Answer with one JSON object and nothing else:
+{{"ratings": [{{"id": "P1", "rating": "match"}}], "unsupported": "none", "comment": "one sentence on the most serious problem, or empty"}}

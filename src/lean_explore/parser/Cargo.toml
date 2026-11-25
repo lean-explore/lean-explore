@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["crates/lean-source", "crates/lean-source-cli", "crates/lean-source-py"]
+members = ["crates/lean-informal", "crates/lean-source", "crates/lean-source-cli", "crates/lean-source-py"]
 
 [workspace.package]
 version = "0.1.0"

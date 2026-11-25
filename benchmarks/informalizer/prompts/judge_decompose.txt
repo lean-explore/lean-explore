@@ -1,0 +1,19 @@
+You are checking natural-language descriptions of Lean 4 declarations from Mathlib against the declarations themselves. First, break the declaration below into the parts a faithful description must state.
+
+The Lean source shows the declaration in the scope where it is written: the `variable` lines above it supply hypotheses and types that its statement uses, together with the instance arguments they need. Proofs are left out. {note_line}
+
+List, in order:
+- for a theorem or lemma: every hypothesis (each type and structure assumption, each explicit or implicit premise, including those from `variable` lines that the statement uses) and then its conclusion;
+- for a definition, structure, class, instance or abbreviation: what is defined, every parameter or assumption it depends on, and the defining value, property or fields.
+
+Merge trivial typing parts with the assumption they belong to (for example "G is a group" rather than "G is a type" and "G has a group structure"). Write each part in plain mathematical English, precise enough to check a description against it.
+
+Declaration name: {name}
+
+```lean
+{reference}
+```
+
+Answer with one JSON object and nothing else:
+{{"parts": [{{"id": "P1", "role": "hypothesis", "text": "..."}}, {{"id": "P2", "role": "conclusion", "text": "..."}}]}}
+Roles are "hypothesis", "conclusion", "defined", "parameter" or "value".
