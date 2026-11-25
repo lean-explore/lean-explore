@@ -118,10 +118,17 @@ class Embedder:
     """The production embedding model, documents without prompt, queries with."""
 
     def __init__(self, model_name: str, device: str | None, batch_size: int):
-        """Load the model."""
+        """Load the model in float32.
+
+        In float32 the published descriptions embed to their published vectors
+        with a cosine of at least 0.9998; in bfloat16, the default on some
+        devices, only 0.998, which can reorder close candidates.
+        """
         from sentence_transformers import SentenceTransformer  # Heavy; load lazily.
 
-        self.model = SentenceTransformer(model_name, device=device)
+        self.model = SentenceTransformer(
+            model_name, device=device, model_kwargs={"dtype": "float32"}
+        )
         self.model.max_seq_length = MAX_SEQUENCE_LENGTH
         self.batch_size = batch_size
 

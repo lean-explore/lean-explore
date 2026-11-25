@@ -98,7 +98,7 @@ Every measure judges a description against the Lean declaration it describes, an
 
 Differences come with paired bootstrap 95% intervals over queries or declarations.
 
-- Search scores the dense channel only. The descriptions of the 100 files are embedded again with production's model, every other declaration keeps its published vector, and name search, the dependency boost and the reranker are not run.
+- Search scores the dense channel only. The descriptions of the 100 files are embedded again with production's model in float32, which reproduces their published vectors to a cosine of at least 0.9998, and every other declaration keeps its published vector. Name search, the dependency boost and the reranker are not run. On the 12 November query build, the published descriptions reach Success@10 0.428 and nDCG@10 0.284 over 353 queries; embedding them on 24 CPU cores takes about 30 minutes.
 - BEq+ finds about half of the true equivalences (recall 48.3, precision 98.0 on ProofNetVerif) and covers theorems only, so its rates rank the runs but understate their accuracy. The round trip downloads the reference implementation of BEq+ from LeanInteract at commit `768e18ebcb5c7ec34d308768a785389eeac37798`, checks its SHA-256 and runs it unchanged.
 - LeanScorer reported an F1 of 0.92 on competition problems. Its agreement on Mathlib descriptions is what `calibrate` measures.
 
